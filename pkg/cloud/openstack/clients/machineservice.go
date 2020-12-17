@@ -32,6 +32,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/volumes"
 	"github.com/gophercloud/gophercloud/openstack/common/extensions"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/attachinterfaces"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/availabilityzones"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/bootfromvolume"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/floatingips"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
@@ -913,6 +914,48 @@ func (is *InstanceService) DoesImageExist(imageName string) error {
 	}
 
 	return nil
+}
+
+// DoesAvailabilityZoneExist return an error if AZ with the given name doesn't exist, and nil otherwise
+func (is *InstanceService) DoesAvailabilityZoneExist(azName string) error {
+	if azName == "" {
+		return nil
+	}
+	zones, err := ListAvailableAvailabilityZones(is.computeClient)
+	if err != nil {
+		return err
+	}
+	if len(zones) == 0 {
+		return fmt.Errorf("could not find an available compute availability zone")
+	}
+	for _, zoneName := range zones {
+		if zoneName == azName {
+			return nil
+		}
+	}
+	return fmt.Errorf("could not find compute availability zone: %s", azName)
+}
+
+// ListAvailableAvailabilityZones is a convenience function that return a slice of available Availability Zones.
+// TODO: remove that function once we bump gophercloud/utils that containers this helper.
+func ListAvailableAvailabilityZones(client *gophercloud.ServiceClient) ([]string, error) {
+	var ret []string
+	allPages, err := availabilityzones.List(client).AllPages()
+	if err != nil {
+		return ret, err
+	}
+
+	availabilityZoneInfo, err := availabilityzones.ExtractAvailabilityZones(allPages)
+	if err != nil {
+		return ret, err
+	}
+
+	for _, zoneInfo := range availabilityZoneInfo {
+		if zoneInfo.ZoneState.Available {
+			ret = append(ret, zoneInfo.ZoneName)
+		}
+	}
+	return ret, nil
 }
 
 func (is *InstanceService) GetInstance(resourceId string) (instance *Instance, err error) {
