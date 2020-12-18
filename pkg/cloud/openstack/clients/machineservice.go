@@ -41,7 +41,6 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 	"github.com/gophercloud/gophercloud/openstack/identity/v3/tokens"
-	"github.com/gophercloud/gophercloud/openstack/imageservice/v2/images"
 	netext "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/attributestags"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/trunks"
@@ -50,6 +49,8 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	"github.com/gophercloud/gophercloud/pagination"
 	"github.com/gophercloud/utils/openstack/clientconfig"
+	flavorutils "github.com/gophercloud/utils/openstack/compute/v2/flavors"
+	imageutils "github.com/gophercloud/utils/openstack/imageservice/v2/images"
 	configclient "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
 	"github.com/openshift/machine-api-operator/pkg/util"
@@ -367,36 +368,6 @@ func GetSecurityGroups(is *InstanceService, sg_param []openstackconfigv1.Securit
 	return sgIDs, nil
 }
 
-// Helper function for getting image ID from name
-func getImageID(is *InstanceService, imageName string) (string, error) {
-	if imageName == "" {
-		return "", nil
-	}
-
-	opts := images.ListOpts{
-		Name: imageName,
-	}
-
-	pages, err := images.List(is.imagesClient, opts).AllPages()
-	if err != nil {
-		return "", err
-	}
-
-	allImages, err := images.ExtractImages(pages)
-	if err != nil {
-		return "", err
-	}
-
-	switch len(allImages) {
-	case 0:
-		return "", fmt.Errorf("no image with the name %s could be found", imageName)
-	case 1:
-		return allImages[0].ID, nil
-	default:
-		return "", fmt.Errorf("too many images with the name, %s, were found", imageName)
-	}
-}
-
 // InstanceCreate creates a compute instance.
 // If ServerGroupName is nonempty and no server group exists with that name,
 // then InstanceCreate creates a server group with that name.
@@ -580,8 +551,12 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 		is.computeClient.Microversion = "2.52"
 	}
 
-	// Get image ID
-	imageID, err := getImageID(is, config.Image)
+	imageID, err := imageutils.IDFromName(is.imagesClient, config.Image)
+	if err != nil {
+		return nil, fmt.Errorf("Create new server err: %v", err)
+	}
+
+	flavorID, err := flavorutils.IDFromName(is.computeClient, config.Flavor)
 	if err != nil {
 		return nil, fmt.Errorf("Create new server err: %v", err)
 	}
@@ -589,12 +564,11 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 	var serverCreateOpts servers.CreateOptsBuilder = servers.CreateOpts{
 		Name:             name,
 		ImageRef:         imageID,
-		FlavorName:       config.Flavor,
+		FlavorRef:        flavorID,
 		AvailabilityZone: config.AvailabilityZone,
 		Networks:         ports_list,
 		UserData:         []byte(userData),
 		SecurityGroups:   securityGroups,
-		ServiceClient:    is.computeClient,
 		Tags:             serverTags,
 		Metadata:         config.ServerMetadata,
 		ConfigDrive:      config.ConfigDrive,
@@ -609,12 +583,11 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 		// change serverCreateOpts to exclude imageRef from them
 		serverCreateOpts = servers.CreateOpts{
 			Name:             name,
-			FlavorName:       config.Flavor,
+			FlavorRef:        flavorID,
 			AvailabilityZone: config.AvailabilityZone,
 			Networks:         ports_list,
 			UserData:         []byte(userData),
 			SecurityGroups:   securityGroups,
-			ServiceClient:    is.computeClient,
 			Tags:             serverTags,
 			Metadata:         config.ServerMetadata,
 			ConfigDrive:      config.ConfigDrive,
@@ -624,7 +597,7 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 			// if source type is "image" then we have to create a volume from the image first
 			klog.Infof("Creating a bootable volume from image %v.", config.RootVolume.SourceUUID)
 
-			imageID, err := getImageID(is, config.RootVolume.SourceUUID)
+			imageID, err := imageutils.IDFromName(is.imagesClient, config.RootVolume.SourceUUID)
 			if err != nil {
 				return nil, fmt.Errorf("Create new server err: %v", err)
 			}
@@ -896,24 +869,16 @@ func (is *InstanceService) GetInstanceList(opts *InstanceListOpts) ([]*Instance,
 	return instanceList, nil
 }
 
-// DoesFlavorExist return an error if flavor with given name doesn't exist, and nil otherwise
+// DoesFlavorExist returns nil if exactly one flavor exists with the given name.
 func (is *InstanceService) DoesFlavorExist(flavorName string) error {
-	_, err := flavors.IDFromName(is.computeClient, flavorName)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	_, err := flavorutils.IDFromName(is.computeClient, flavorName)
+	return err
 }
 
-// DoesImageExist return an error if image with the given name doesn't exist, and nil otherwise
+// DoesImageExist returns nil if exactly one image exists with the given name.
 func (is *InstanceService) DoesImageExist(imageName string) error {
-	_, err := getImageID(is, imageName)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	_, err := imageutils.IDFromName(is.imagesClient, imageName)
+	return err
 }
 
 // DoesAvailabilityZoneExist return an error if AZ with the given name doesn't exist, and nil otherwise
@@ -1011,8 +976,7 @@ func (is *InstanceService) GetFlavorInfo(flavorID string) (flavor *flavors.Flavo
 }
 
 func (is *InstanceService) GetFlavorID(flavorName string) (string, error) {
-	flavorID, err := flavors.IDFromName(is.computeClient, flavorName)
-	return flavorID, err
+	return flavorutils.IDFromName(is.computeClient, flavorName)
 }
 
 func serverToInstance(server *servers.Server) *Instance {
