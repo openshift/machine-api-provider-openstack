@@ -32,7 +32,6 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/volumes"
 	"github.com/gophercloud/gophercloud/openstack/common/extensions"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/attachinterfaces"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/availabilityzones"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/bootfromvolume"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/floatingips"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
@@ -49,6 +48,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	"github.com/gophercloud/gophercloud/pagination"
 	"github.com/gophercloud/utils/openstack/clientconfig"
+	azutils "github.com/gophercloud/utils/openstack/compute/v2/availabilityzones"
 	flavorutils "github.com/gophercloud/utils/openstack/compute/v2/flavors"
 	imageutils "github.com/gophercloud/utils/openstack/imageservice/v2/images"
 	configclient "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
@@ -886,7 +886,7 @@ func (is *InstanceService) DoesAvailabilityZoneExist(azName string) error {
 	if azName == "" {
 		return nil
 	}
-	zones, err := ListAvailableAvailabilityZones(is.computeClient)
+	zones, err := azutils.ListAvailableAvailabilityZones(is.computeClient)
 	if err != nil {
 		return err
 	}
@@ -899,28 +899,6 @@ func (is *InstanceService) DoesAvailabilityZoneExist(azName string) error {
 		}
 	}
 	return fmt.Errorf("could not find compute availability zone: %s", azName)
-}
-
-// ListAvailableAvailabilityZones is a convenience function that return a slice of available Availability Zones.
-// TODO: remove that function once we bump gophercloud/utils that containers this helper.
-func ListAvailableAvailabilityZones(client *gophercloud.ServiceClient) ([]string, error) {
-	var ret []string
-	allPages, err := availabilityzones.List(client).AllPages()
-	if err != nil {
-		return ret, err
-	}
-
-	availabilityZoneInfo, err := availabilityzones.ExtractAvailabilityZones(allPages)
-	if err != nil {
-		return ret, err
-	}
-
-	for _, zoneInfo := range availabilityZoneInfo {
-		if zoneInfo.ZoneState.Available {
-			ret = append(ret, zoneInfo.ZoneName)
-		}
-	}
-	return ret, nil
 }
 
 func (is *InstanceService) GetInstance(resourceId string) (instance *Instance, err error) {
