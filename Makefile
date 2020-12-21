@@ -58,6 +58,10 @@ unit:
 	go test -tags=unit $(shell go list ./...) $(TESTARGS)
 
 
+.PHONY: check-vendor
+check-vendor:
+	hack/verify-vendor.sh
+
 fmt:
 	hack/verify-gofmt.sh
 
