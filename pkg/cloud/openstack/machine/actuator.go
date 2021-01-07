@@ -699,10 +699,12 @@ func (oc *OpenstackClient) validateMachine(machine *machinev1.Machine) error {
 
 	// TODO(mfedosin): add more validations here
 
-	// Validate that image exists
-	err = machineService.DoesImageExist(machineSpec.Image)
-	if err != nil {
-		return err
+	// Validate that image exists when not booting from volume
+	if machineSpec.RootVolume == nil {
+		err = machineService.DoesImageExist(machineSpec.Image)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Validate that flavor exists
