@@ -551,9 +551,13 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 		is.computeClient.Microversion = "2.52"
 	}
 
-	imageID, err := imageutils.IDFromName(is.imagesClient, config.Image)
-	if err != nil {
-		return nil, fmt.Errorf("Create new server err: %v", err)
+	var imageID string
+
+	if config.RootVolume == nil {
+		imageID, err = imageutils.IDFromName(is.imagesClient, config.Image)
+		if err != nil {
+			return nil, fmt.Errorf("Create new server err: %v", err)
+		}
 	}
 
 	flavorID, err := flavorutils.IDFromName(is.computeClient, config.Flavor)
