@@ -6,7 +6,6 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
-	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -133,7 +132,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrlRuntime.Manager, options controlle
 	// see https://sdk.operatorframework.io/docs/building-operators/golang/tutorial/#controller-configurations
 
 	if err != nil {
-		return errors.Wrap(err, "controller creation failed")
+		return fmt.Errorf("controller creation failed: %w", err)
 	}
 
 	r.Client = mgr.GetClient()
@@ -144,7 +143,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrlRuntime.Manager, options controlle
 	config := mgr.GetConfig()
 	r.kubeClient, err = kubernetes.NewForConfig(config)
 	if err != nil {
-		return errors.Wrap(err, "could not create kubernetes client to talk to the API server")
+		return fmt.Errorf("could not create kubernetes client to talk to the API server: %w", err)
 	}
 	r.flavorCache = newMachineFlavorCache()
 
