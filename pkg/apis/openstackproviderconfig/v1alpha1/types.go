@@ -134,6 +134,7 @@ type NetworkParam struct {
 	NoAllowedAddressPairs bool `json:"noAllowedAddressPairs,omitempty"`
 	// PortTags allows users to specify a list of tags to add to ports created in a given network
 	PortTags []string `json:"portTags,omitempty"`
+	VNICType string   `json:"vnicType,omitempty"`
 }
 
 type Filter struct {
