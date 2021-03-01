@@ -503,8 +503,9 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 			port = portList[0]
 		}
 
+		portTags := deduplicateList(append(machineTags, port.Tags...))
 		_, err = attributestags.ReplaceAll(is.networkClient, "ports", port.ID, attributestags.ReplaceAllOpts{
-			Tags: append(machineTags, port.Tags...)}).Extract()
+			Tags: portTags}).Extract()
 		if err != nil {
 			return nil, fmt.Errorf("Tagging port for server err: %v", err)
 		}
@@ -735,6 +736,24 @@ func createServerGroup(computeClient *gophercloud.ServiceClient, name string) (*
 		Name:     name,
 		Policies: []string{"soft-anti-affinity"},
 	}).Extract()
+}
+
+// deduplicateList removes all duplicate entries from a slice of strings in place
+func deduplicateList(list []string) []string {
+	m := map[string]bool{}
+	for _, element := range list {
+		if _, ok := m[element]; !ok {
+			m[element] = true
+		}
+	}
+
+	dedupedList := make([]string, len(m))
+	i := 0
+	for k := range m {
+		dedupedList[i] = k
+		i++
+	}
+	return dedupedList
 }
 
 func getServerGroupsByName(computeClient *gophercloud.ServiceClient, name string) ([]servergroups.ServerGroup, error) {
