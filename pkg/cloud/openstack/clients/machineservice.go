@@ -618,7 +618,8 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 				VolumeType: config.RootVolume.VolumeType,
 				ImageID:    imageID,
 				// The same name as the instance
-				Name: name,
+				Name:             name,
+				AvailabilityZone: config.RootVolume.Zone,
 			}
 
 			volume, err := volumes.Create(is.volumeClient, volumeCreateOpts).Extract()
