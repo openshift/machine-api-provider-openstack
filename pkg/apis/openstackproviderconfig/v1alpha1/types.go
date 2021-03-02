@@ -191,6 +191,7 @@ type RootVolume struct {
 	DeviceType string `json:"deviceType"`
 	VolumeType string `json:"volumeType,omitempty"`
 	Size       int    `json:"diskSize,omitempty"`
+	Zone       string `json:"availabilityZone,omitempty"`
 }
 
 // +genclient
