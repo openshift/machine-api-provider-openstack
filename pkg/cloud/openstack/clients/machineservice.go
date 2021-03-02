@@ -96,6 +96,7 @@ type Instance struct {
 type ServerNetwork struct {
 	networkID string
 	subnetID  string
+	portTags  []string
 }
 type InstanceListOpts struct {
 	// Name of the image in URL format.
@@ -421,21 +422,25 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 			if net.Subnets == nil {
 				nets = append(nets, ServerNetwork{
 					networkID: netID,
+					portTags:  net.PortTags,
 				})
 			}
 
-			for _, snet := range net.Subnets {
-				sopts := subnets.ListOpts(snet.Filter)
-				sopts.ID = snet.UUID
+			for _, snetParam := range net.Subnets {
+				sopts := subnets.ListOpts(snetParam.Filter)
+				sopts.ID = snetParam.UUID
 				sopts.NetworkID = netID
-				snets, err := getSubnetsByFilter(is, &sopts)
+
+				// Query for all subnets that match filters
+				snetResults, err := getSubnetsByFilter(is, &sopts)
 				if err != nil {
 					return nil, err
 				}
-				for _, snet := range snets {
+				for _, snet := range snetResults {
 					nets = append(nets, ServerNetwork{
 						networkID: snet.NetworkID,
 						subnetID:  snet.ID,
+						portTags:  append(net.PortTags, snetParam.PortTags...),
 					})
 				}
 			}
@@ -498,8 +503,9 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 			port = portList[0]
 		}
 
+		portTags := deduplicateList(append(machineTags, port.Tags...))
 		_, err = attributestags.ReplaceAll(is.networkClient, "ports", port.ID, attributestags.ReplaceAllOpts{
-			Tags: machineTags}).Extract()
+			Tags: portTags}).Extract()
 		if err != nil {
 			return nil, fmt.Errorf("Tagging port for server err: %v", err)
 		}
@@ -730,6 +736,24 @@ func createServerGroup(computeClient *gophercloud.ServiceClient, name string) (*
 		Name:     name,
 		Policies: []string{"soft-anti-affinity"},
 	}).Extract()
+}
+
+// deduplicateList removes all duplicate entries from a slice of strings in place
+func deduplicateList(list []string) []string {
+	m := map[string]bool{}
+	for _, element := range list {
+		if _, ok := m[element]; !ok {
+			m[element] = true
+		}
+	}
+
+	dedupedList := make([]string, len(m))
+	i := 0
+	for k := range m {
+		dedupedList[i] = k
+		i++
+	}
+	return dedupedList
 }
 
 func getServerGroupsByName(computeClient *gophercloud.ServiceClient, name string) ([]servergroups.ServerGroup, error) {
