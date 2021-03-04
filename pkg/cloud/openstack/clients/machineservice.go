@@ -42,6 +42,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/identity/v3/tokens"
 	netext "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/attributestags"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/portsbinding"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/trunks"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
@@ -97,6 +98,7 @@ type ServerNetwork struct {
 	networkID string
 	subnetID  string
 	portTags  []string
+	vnicType  string
 }
 type InstanceListOpts struct {
 	// Name of the image in URL format.
@@ -324,7 +326,11 @@ func CreatePort(is *InstanceService, name string, net ServerNetwork, securityGro
 	if net.subnetID != "" {
 		portCreateOpts.FixedIPs = []ports.IP{{SubnetID: net.subnetID}}
 	}
-	newPort, err := ports.Create(is.networkClient, portCreateOpts).Extract()
+	createOps := portsbinding.CreateOptsExt{
+		CreateOptsBuilder: portCreateOpts,
+		VNICType:          net.vnicType,
+	}
+	newPort, err := ports.Create(is.networkClient, createOps).Extract()
 	if err != nil {
 		return ports.Port{}, fmt.Errorf("Create port for server err: %v", err)
 	}
@@ -423,6 +429,7 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 				nets = append(nets, ServerNetwork{
 					networkID: netID,
 					portTags:  net.PortTags,
+					vnicType:  net.VNICType,
 				})
 			}
 
@@ -441,6 +448,7 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 						networkID: snet.NetworkID,
 						subnetID:  snet.ID,
 						portTags:  append(net.PortTags, snetParam.PortTags...),
+						vnicType:  net.VNICType,
 					})
 				}
 			}
