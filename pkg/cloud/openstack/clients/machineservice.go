@@ -885,7 +885,9 @@ func (is *InstanceService) GetInstanceList(opts *InstanceListOpts) ([]*Instance,
 	var listOpts servers.ListOpts
 	if opts != nil {
 		listOpts = servers.ListOpts{
-			Name: opts.Name,
+			// Name is a regular expression, so we need to explicitly specify a
+			// whole string match. https://bugzilla.redhat.com/show_bug.cgi?id=1747270
+			Name: fmt.Sprintf("^%s$", opts.Name),
 		}
 	} else {
 		listOpts = servers.ListOpts{}
