@@ -135,6 +135,8 @@ type NetworkParam struct {
 	// PortTags allows users to specify a list of tags to add to ports created in a given network
 	PortTags []string `json:"portTags,omitempty"`
 	VNICType string   `json:"vnicType,omitempty"`
+	// PortSecurity optionally enables or disables security on ports managed by OpenStack
+	PortSecurity *bool `json:"portSecurity,omitempty"`
 }
 
 type Filter struct {
@@ -165,6 +167,9 @@ type SubnetParam struct {
 
 	// PortTags are tags that are added to ports created on this subnet
 	PortTags []string `json:"portTags,omitempty"`
+
+	// PortSecurity optionally enables or disables security on ports managed by OpenStack
+	PortSecurity *bool `json:"portSecurity,omitempty"`
 }
 
 type SubnetFilter struct {

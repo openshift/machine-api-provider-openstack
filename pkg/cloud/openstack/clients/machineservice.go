@@ -43,6 +43,7 @@ import (
 	netext "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/attributestags"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/portsbinding"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/portsecurity"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/trunks"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
@@ -95,11 +96,19 @@ type Instance struct {
 }
 
 type ServerNetwork struct {
-	networkID string
-	subnetID  string
-	portTags  []string
-	vnicType  string
+	networkID    string
+	subnetID     string
+	portTags     []string
+	vnicType     string
+	portSecurity *bool
 }
+
+// for updating the state of ports with port security
+var portWithPortSecurityExtensions struct {
+	ports.Port
+	portsecurity.PortSecurityExt
+}
+
 type InstanceListOpts struct {
 	// Name of the image in URL format.
 	Image string `q:"image"`
@@ -427,9 +436,10 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 			}
 			if net.Subnets == nil {
 				nets = append(nets, ServerNetwork{
-					networkID: netID,
-					portTags:  net.PortTags,
-					vnicType:  net.VNICType,
+					networkID:    netID,
+					portTags:     net.PortTags,
+					vnicType:     net.VNICType,
+					portSecurity: net.PortSecurity,
 				})
 			}
 
@@ -437,6 +447,11 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 				sopts := subnets.ListOpts(snetParam.Filter)
 				sopts.ID = snetParam.UUID
 				sopts.NetworkID = netID
+				// Inherit portSecurity from network if unset on subnet
+				portSecurity := net.PortSecurity
+				if snetParam.PortSecurity != nil {
+					portSecurity = snetParam.PortSecurity
+				}
 
 				// Query for all subnets that match filters
 				snetResults, err := getSubnetsByFilter(is, &sopts)
@@ -445,10 +460,11 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 				}
 				for _, snet := range snetResults {
 					nets = append(nets, ServerNetwork{
-						networkID: snet.NetworkID,
-						subnetID:  snet.ID,
-						portTags:  append(net.PortTags, snetParam.PortTags...),
-						vnicType:  net.VNICType,
+						networkID:    snet.NetworkID,
+						subnetID:     snet.ID,
+						portTags:     append(net.PortTags, snetParam.PortTags...),
+						vnicType:     net.VNICType,
+						portSecurity: portSecurity,
 					})
 				}
 			}
@@ -498,17 +514,32 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 		var port ports.Port
 		if len(portList) == 0 {
 			// create server port
-			if _, ok := netsWithoutAllowedAddressPairs[net.networkID]; ok {
-				// create ports without address pairs
-				port, err = CreatePort(is, name, net, &securityGroups, &[]ports.AddressPair{})
-			} else {
-				port, err = CreatePort(is, name, net, &securityGroups, &allowedAddressPairs)
+			secGroups := &securityGroups
+			addrPairs := &allowedAddressPairs
+			if net.portSecurity != nil && *net.portSecurity == false {
+				secGroups = &[]string{}
+				addrPairs = &[]ports.AddressPair{}
 			}
+			if _, ok := netsWithoutAllowedAddressPairs[net.networkID]; ok {
+				addrPairs = &[]ports.AddressPair{}
+			}
+			port, err = CreatePort(is, name, net, secGroups, addrPairs)
 			if err != nil {
 				return nil, fmt.Errorf("Failed to create port err: %v", err)
 			}
 		} else {
 			port = portList[0]
+		}
+
+		// Update the port with the correct port security settings
+		// TODO(egarcia): figure out if possible to make this part of the prior create and update api calls
+		updateOpts := portsecurity.PortUpdateOptsExt{
+			UpdateOptsBuilder:   ports.UpdateOpts{},
+			PortSecurityEnabled: net.portSecurity,
+		}
+		err = ports.Update(is.networkClient, port.ID, updateOpts).ExtractInto(&portWithPortSecurityExtensions)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to update port security on port %s: %v", port.ID, err)
 		}
 
 		portTags := deduplicateList(append(machineTags, port.Tags...))
