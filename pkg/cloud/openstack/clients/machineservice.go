@@ -609,7 +609,7 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 			return nil, fmt.Errorf("Failed to update port security on port %s: %v", port.ID, err)
 		}
 
-		portTags := deduplicateList(append(machineTags, port.Tags...))
+		portTags := deduplicateList(append(machineTags, net.portTags...))
 		_, err = attributestags.ReplaceAll(is.networkClient, "ports", port.ID, attributestags.ReplaceAllOpts{
 			Tags: portTags}).Extract()
 		if err != nil {
