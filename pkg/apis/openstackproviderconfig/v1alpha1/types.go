@@ -212,6 +212,7 @@ type PortOpts struct {
 	ProjectID           string              `json:"projectID,omitempty"`
 	SecurityGroups      *[]string           `json:"securityGroups,omitempty"`
 	AllowedAddressPairs []ports.AddressPair `json:"allowedAddressPairs,omitempty"`
+	Tags                []string            `json:"tags,omitempty"`
 
 	// The ID of the host where the port is allocated
 	HostID string `json:"binding:hostID,omitempty"`

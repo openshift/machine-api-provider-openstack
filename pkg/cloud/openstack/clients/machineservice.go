@@ -660,6 +660,14 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 		if err != nil {
 			return nil, err
 		}
+
+		portTags := deduplicateList(append(machineTags, portCreateOpts.Tags...))
+		_, err = attributestags.ReplaceAll(is.networkClient, "ports", port.ID, attributestags.ReplaceAllOpts{
+			Tags: portTags}).Extract()
+		if err != nil {
+			return nil, fmt.Errorf("Tagging port for server err: %v", err)
+		}
+
 		portsList = append(portsList, servers.Network{
 			Port: port.ID,
 		})
