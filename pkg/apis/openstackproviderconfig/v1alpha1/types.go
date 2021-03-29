@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -54,8 +55,10 @@ type OpenstackProviderSpec struct {
 	// A networks object. Required parameter when there are multiple networks defined for the tenant.
 	// When you do not specify the networks parameter, the server attaches to the only network created for the current tenant.
 	Networks []NetworkParam `json:"networks,omitempty"`
-	// The floatingIP which will be associated to the machine, only used for master.
-	// The floatingIP should have been created and haven't been associated.
+
+	// Create and assign additional ports to instances
+	Ports []PortOpts `json:"ports,omitempty"`
+
 	FloatingIP string `json:"floatingIP,omitempty"`
 
 	// The availability zone from which to launch the server.
@@ -194,6 +197,32 @@ type SubnetFilter struct {
 	TagsAny         string `json:"tagsAny,omitempty"`
 	NotTags         string `json:"notTags,omitempty"`
 	NotTagsAny      string `json:"notTagsAny,omitempty"`
+}
+
+type PortOpts struct {
+	NetworkID           string              `json:"networkId" required:"true"`
+	NameSuffix          string              `json:"nameSuffix" required:"true"`
+	Description         string              `json:"description,omitempty"`
+	AdminStateUp        *bool               `json:"adminStateUp,omitempty"`
+	MACAddress          string              `json:"macAddress,omitempty"`
+	FixedIPs            []ports.IP          `json:"fixedIPs,omitempty"`
+	DeviceID            string              `json:"deviceID,omitempty"`
+	DeviceOwner         string              `json:"deviceOwner,omitempty"`
+	TenantID            string              `json:"tenantID,omitempty"`
+	ProjectID           string              `json:"projectID,omitempty"`
+	SecurityGroups      *[]string           `json:"securityGroups,omitempty"`
+	AllowedAddressPairs []ports.AddressPair `json:"allowedAddressPairs,omitempty"`
+
+	// The ID of the host where the port is allocated
+	HostID string `json:"binding:hostID,omitempty"`
+
+	// The virtual network interface card (vNIC) type that is bound to the
+	// neutron port.
+	VNICType string `json:"binding:vnicType,omitempty"`
+
+	// enable or disable security on a given port
+	// incompatible with securityGroups and allowedAddressPairs
+	PortSecurity *bool `json:"portSecurity,omitempty"`
 }
 
 type RootVolume struct {
