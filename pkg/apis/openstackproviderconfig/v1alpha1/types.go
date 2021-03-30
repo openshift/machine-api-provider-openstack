@@ -200,7 +200,7 @@ type SubnetFilter struct {
 }
 
 type PortOpts struct {
-	NetworkID           string              `json:"networkId" required:"true"`
+	NetworkID           string              `json:"networkID" required:"true"`
 	NameSuffix          string              `json:"nameSuffix" required:"true"`
 	Description         string              `json:"description,omitempty"`
 	AdminStateUp        *bool               `json:"adminStateUp,omitempty"`
