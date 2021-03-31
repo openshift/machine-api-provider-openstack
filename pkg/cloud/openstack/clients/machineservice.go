@@ -339,8 +339,6 @@ func getOrCreatePort(is *InstanceService, name string, portOpts openstackconfigv
 			Description:         portOpts.Description,
 			AdminStateUp:        portOpts.AdminStateUp,
 			MACAddress:          portOpts.MACAddress,
-			DeviceID:            portOpts.DeviceID,
-			DeviceOwner:         portOpts.DeviceOwner,
 			TenantID:            portOpts.TenantID,
 			ProjectID:           portOpts.ProjectID,
 			SecurityGroups:      portOpts.SecurityGroups,
