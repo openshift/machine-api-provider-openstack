@@ -345,7 +345,12 @@ func getOrCreatePort(is *InstanceService, name string, portOpts openstackconfigv
 			AllowedAddressPairs: portOpts.AllowedAddressPairs,
 		}
 		if len(portOpts.FixedIPs) != 0 {
-			createOpts.FixedIPs = portOpts.FixedIPs
+			fixedIPs := make([]ports.IP, len(portOpts.FixedIPs))
+			for i, portOptIP := range portOpts.FixedIPs {
+				fixedIPs[i].SubnetID = portOptIP.SubnetID
+				fixedIPs[i].IPAddress = portOptIP.IPAddress
+			}
+			createOpts.FixedIPs = fixedIPs
 		}
 		newPort, err := ports.Create(is.networkClient, portsbinding.CreateOptsExt{
 			CreateOptsBuilder: createOpts,
@@ -510,7 +515,7 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 				for _, snet := range snetResults {
 					nets = append(nets, openstackconfigv1.PortOpts{
 						NetworkID:    snet.NetworkID,
-						FixedIPs:     []ports.IP{{SubnetID: snet.ID}},
+						FixedIPs:     []openstackconfigv1.FixedIPs{{SubnetID: snet.ID}},
 						Tags:         append(net.PortTags, snetParam.PortTags...),
 						VNICType:     net.VNICType,
 						PortSecurity: portSecurity,

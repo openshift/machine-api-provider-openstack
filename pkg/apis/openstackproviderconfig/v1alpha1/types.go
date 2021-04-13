@@ -205,7 +205,7 @@ type PortOpts struct {
 	Description         string              `json:"description,omitempty"`
 	AdminStateUp        *bool               `json:"adminStateUp,omitempty"`
 	MACAddress          string              `json:"macAddress,omitempty"`
-	FixedIPs            []ports.IP          `json:"fixedIPs,omitempty"`
+	FixedIPs            []FixedIPs          `json:"fixedIPs,omitempty"`
 	TenantID            string              `json:"tenantID,omitempty"`
 	ProjectID           string              `json:"projectID,omitempty"`
 	SecurityGroups      *[]string           `json:"securityGroups,omitempty"`
@@ -213,15 +213,20 @@ type PortOpts struct {
 	Tags                []string            `json:"tags,omitempty"`
 
 	// The ID of the host where the port is allocated
-	HostID string `json:"binding:hostID,omitempty"`
+	HostID string `json:"hostID,omitempty"`
 
 	// The virtual network interface card (vNIC) type that is bound to the
 	// neutron port.
-	VNICType string `json:"binding:vnicType,omitempty"`
+	VNICType string `json:"vnicType,omitempty"`
 
 	// enable or disable security on a given port
 	// incompatible with securityGroups and allowedAddressPairs
 	PortSecurity *bool `json:"portSecurity,omitempty"`
+}
+
+type FixedIPs struct {
+	SubnetID  string `json:"subnetID"`
+	IPAddress string `json:"ipAddress,omitempty"`
 }
 
 type RootVolume struct {
