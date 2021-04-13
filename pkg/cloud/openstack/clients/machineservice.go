@@ -357,9 +357,14 @@ func getOrCreatePort(is *InstanceService, name string, portOpts openstackconfigv
 			return nil, err
 		}
 
-		if portOpts.PortSecurity != nil && *portOpts.PortSecurity == false {
+		if portOpts.PortSecurity != nil {
+			portUpdateOpts := ports.UpdateOpts{}
+			if *portOpts.PortSecurity == false {
+				portUpdateOpts.SecurityGroups = &[]string{}
+				portUpdateOpts.AllowedAddressPairs = &[]ports.AddressPair{}
+			}
 			updateOpts := portsecurity.PortUpdateOptsExt{
-				UpdateOptsBuilder:   ports.UpdateOpts{},
+				UpdateOptsBuilder:   portUpdateOpts,
 				PortSecurityEnabled: portOpts.PortSecurity,
 			}
 			err = ports.Update(is.networkClient, newPort.ID, updateOpts).ExtractInto(&portWithPortSecurityExtensions)
@@ -546,10 +551,6 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 		}
 		portOpt.SecurityGroups = &securityGroups
 		portOpt.AllowedAddressPairs = allowedAddressPairs
-		if portOpt.PortSecurity != nil && *portOpt.PortSecurity == false {
-			portOpt.SecurityGroups = &[]string{}
-			portOpt.AllowedAddressPairs = []ports.AddressPair{}
-		}
 		if _, ok := netsWithoutAllowedAddressPairs[portOpt.NetworkID]; ok {
 			portOpt.AllowedAddressPairs = []ports.AddressPair{}
 		}
