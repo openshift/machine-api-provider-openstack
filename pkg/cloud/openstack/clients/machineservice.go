@@ -342,7 +342,14 @@ func getOrCreatePort(is *InstanceService, name string, portOpts openstackconfigv
 			TenantID:            portOpts.TenantID,
 			ProjectID:           portOpts.ProjectID,
 			SecurityGroups:      portOpts.SecurityGroups,
-			AllowedAddressPairs: portOpts.AllowedAddressPairs,
+			AllowedAddressPairs: []ports.AddressPair{},
+		}
+
+		for _, ap := range portOpts.AllowedAddressPairs {
+			createOpts.AllowedAddressPairs = append(createOpts.AllowedAddressPairs, ports.AddressPair{
+				IPAddress:  ap.IPAddress,
+				MACAddress: ap.MACAddress,
+			})
 		}
 		if len(portOpts.FixedIPs) != 0 {
 			fixedIPs := make([]ports.IP, len(portOpts.FixedIPs))
@@ -533,7 +540,7 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 		return nil, fmt.Errorf("Failed to retrieve cluster Infrastructure object: %v", err)
 	}
 
-	allowedAddressPairs := []ports.AddressPair{}
+	allowedAddressPairs := []openstackconfigv1.AddressPair{}
 	if clusterInfra != nil && clusterInfra.Status.PlatformStatus != nil && clusterInfra.Status.PlatformStatus.OpenStack != nil {
 		clusterVips := []string{
 			clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIP,
@@ -543,7 +550,7 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 
 		for _, vip := range clusterVips {
 			if vip != "" {
-				allowedAddressPairs = append(allowedAddressPairs, ports.AddressPair{IPAddress: vip})
+				allowedAddressPairs = append(allowedAddressPairs, openstackconfigv1.AddressPair{IPAddress: vip})
 			}
 		}
 	}
@@ -557,7 +564,7 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 		portOpt.SecurityGroups = &securityGroups
 		portOpt.AllowedAddressPairs = allowedAddressPairs
 		if _, ok := netsWithoutAllowedAddressPairs[portOpt.NetworkID]; ok {
-			portOpt.AllowedAddressPairs = []ports.AddressPair{}
+			portOpt.AllowedAddressPairs = []openstackconfigv1.AddressPair{}
 		}
 
 		port, err := getOrCreatePort(is, name, portOpt)
