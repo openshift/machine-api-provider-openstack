@@ -531,9 +531,6 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 			}
 		}
 	}
-	if len(nets) == 0 {
-		return nil, fmt.Errorf("No network was found or provided. Please check your machine configuration and try again")
-	}
 
 	clusterInfra, err := configClient.Infrastructures().Get(context.TODO(), "cluster", metav1.GetOptions{})
 	if err != nil {
@@ -559,7 +556,7 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 	var portsList []servers.Network
 	for _, portOpt := range nets {
 		if portOpt.NetworkID == "" {
-			return nil, fmt.Errorf("No network was found or provided. Please check your machine configuration and try again")
+			return nil, fmt.Errorf("A network was not found or provided for one of the networks or subnets in this machineset")
 		}
 		portOpt.SecurityGroups = &securityGroups
 		portOpt.AllowedAddressPairs = allowedAddressPairs
@@ -634,6 +631,10 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 		portsList = append(portsList, servers.Network{
 			Port: port.ID,
 		})
+	}
+
+	if len(portsList) == 0 {
+		return nil, fmt.Errorf("At least one network, subnet, or port must be defined as a networking interface. Please review your machineset and try again")
 	}
 
 	var serverTags []string
