@@ -70,6 +70,9 @@ const (
 	TimeoutPortDelete       = 3 * time.Minute
 	RetryIntervalPortDelete = 5 * time.Second
 
+	// Maximum port name length supported by Neutron
+	PortNameMaxSize = 255
+
 	// MachineRegionLabelName as annotation name for a machine region
 	MachineRegionLabelName = "machine.openshift.io/region"
 
@@ -326,15 +329,25 @@ func getSubnetsByFilter(is *InstanceService, opts *subnets.ListOpts) ([]subnets.
 }
 
 func getOrCreatePort(is *InstanceService, name string, portOpts openstackconfigv1.PortOpts) (*ports.Port, error) {
+	var portName string
+	if portOpts.NameSuffix != "" {
+		portName = name + "-" + portOpts.NameSuffix
+	} else {
+		portName = name
+	}
+	if len(portName) > PortNameMaxSize {
+		portName = portName[len(portName)-PortNameMaxSize:]
+	}
 	existingPorts, err := listPorts(is, ports.ListOpts{
-		Name: name,
+		Name:      portName,
+		NetworkID: portOpts.NetworkID,
 	})
 	if err != nil {
 		return nil, err
 	}
 	if len(existingPorts) == 0 {
 		createOpts := ports.CreateOpts{
-			Name:                name,
+			Name:                portName,
 			NetworkID:           portOpts.NetworkID,
 			Description:         portOpts.Description,
 			AdminStateUp:        portOpts.AdminStateUp,
@@ -390,7 +403,7 @@ func getOrCreatePort(is *InstanceService, name string, portOpts openstackconfigv
 		return &existingPorts[0], nil
 	}
 
-	return nil, fmt.Errorf("multiple ports found with name \"%s\"", name)
+	return nil, fmt.Errorf("multiple ports found with name \"%s\"", portName)
 }
 
 func listPorts(is *InstanceService, opts ports.ListOpts) ([]ports.Port, error) {
@@ -498,6 +511,7 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 			if net.Subnets == nil {
 				nets = append(nets, openstackconfigv1.PortOpts{
 					NetworkID:    netID,
+					NameSuffix:   net.UUID,
 					Tags:         net.PortTags,
 					VNICType:     net.VNICType,
 					PortSecurity: net.PortSecurity,
@@ -522,6 +536,7 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 				for _, snet := range snetResults {
 					nets = append(nets, openstackconfigv1.PortOpts{
 						NetworkID:    snet.NetworkID,
+						NameSuffix:   snet.ID,
 						FixedIPs:     []openstackconfigv1.FixedIPs{{SubnetID: snet.ID}},
 						Tags:         append(net.PortTags, snetParam.PortTags...),
 						VNICType:     net.VNICType,
@@ -616,7 +631,7 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 	}
 
 	for _, portCreateOpts := range config.Ports {
-		port, err := getOrCreatePort(is, name+"-"+portCreateOpts.NameSuffix, portCreateOpts)
+		port, err := getOrCreatePort(is, name, portCreateOpts)
 		if err != nil {
 			return nil, err
 		}
