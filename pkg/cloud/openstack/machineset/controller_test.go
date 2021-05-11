@@ -3,6 +3,11 @@ package machineset
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
+	"strconv"
+	"testing"
+	"time"
+
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
@@ -13,14 +18,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
-	"math/rand"
 	machineproviderv1 "sigs.k8s.io/cluster-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"strconv"
-	"testing"
-	"time"
 )
 
 var emptyFlavorName = ""
@@ -70,7 +71,6 @@ func RandomString(prefix string, n int) string {
 
 var _ = Describe("Reconciler", func() {
 	var c client.Client
-	var stopMgr chan struct{}
 	var fakeRecorder *record.FakeRecorder
 	var namespace *corev1.Namespace
 	var suiteFlavorCache = newMachineFlavorCache()
@@ -94,7 +94,7 @@ var _ = Describe("Reconciler", func() {
 		r.eventRecorder = fakeRecorder
 		r.flavorCache = suiteFlavorCache
 		c = mgr.GetClient()
-		stopMgr = StartTestManager(mgr)
+		StartTestManager(mgr)
 
 		Expect(c.Create(ctx, namespace)).To(Succeed())
 	})
@@ -102,7 +102,6 @@ var _ = Describe("Reconciler", func() {
 	AfterEach(func() {
 		Expect(deleteMachineSets(c, namespace.Name)).To(Succeed())
 		Expect(deleteNameSpace(c, namespace)).To(Succeed())
-		close(stopMgr)
 	})
 
 	type reconcileTestCase = struct {

@@ -3,6 +3,9 @@ package machineset
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
+
 	"github.com/go-logr/logr"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
@@ -16,8 +19,6 @@ import (
 	ctrlRuntime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"strconv"
-	"time"
 )
 
 const (
@@ -44,12 +45,11 @@ type Reconciler struct {
 }
 
 // Reconcile implements controller runtime Reconciler interface.
-func (r *Reconciler) Reconcile(req ctrlRuntime.Request) (ctrlRuntime.Result, error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrlRuntime.Request) (ctrlRuntime.Result, error) {
 
 	logger := r.Log.WithValues("machineset", req.Name, "namespace", req.Namespace)
 	logger.V(3).Info("Reconciling")
 
-	ctx := context.Background()
 	machineSet := &machinev1.MachineSet{}
 	if err := r.Client.Get(ctx, req.NamespacedName, machineSet); err != nil {
 		if apierrors.IsNotFound(err) {
