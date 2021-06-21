@@ -27,6 +27,8 @@ import (
 	"gopkg.in/yaml.v2"
 	"k8s.io/client-go/kubernetes"
 
+	openstackconfigv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
+
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/volumes"
@@ -58,7 +60,6 @@ import (
 	"github.com/openshift/machine-api-operator/pkg/util"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
-	openstackconfigv1 "sigs.k8s.io/cluster-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 )
 
 const (
@@ -861,7 +862,8 @@ func deduplicateList(list []string) []string {
 }
 
 func getServerGroupsByName(computeClient *gophercloud.ServiceClient, name string) ([]servergroups.ServerGroup, error) {
-	pages, err := servergroups.List(computeClient).AllPages()
+	// XXX(mdbooth): I added a nil opts argument here without even looking!
+	pages, err := servergroups.List(computeClient, nil).AllPages()
 	if err != nil {
 		return nil, err
 	}

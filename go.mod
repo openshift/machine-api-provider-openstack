@@ -1,4 +1,4 @@
-module sigs.k8s.io/cluster-api-provider-openstack
+module shiftstack/machine-api-provider-openstack
 
 go 1.15
 
@@ -9,23 +9,25 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20190620071333-e64a0ec8b42a // indirect
 	github.com/coreos/ignition v0.33.0 // indirect
 	github.com/go-logr/logr v0.4.0
-	github.com/gophercloud/gophercloud v0.14.0
-	github.com/gophercloud/utils v0.0.0-20201221031838-d93cf4b3fa50
-	github.com/onsi/ginkgo v1.15.0
-	github.com/onsi/gomega v1.10.5
+	github.com/gophercloud/gophercloud v0.16.0
+	github.com/gophercloud/utils v0.0.0-20210323225332-7b186010c04f
+	github.com/onsi/ginkgo v1.16.4
+	github.com/onsi/gomega v1.13.0
 	github.com/openshift/api v0.0.0-20210416115537-a60c0dc032fd
 	github.com/openshift/client-go v0.0.0-20210409155308-a8e62c60e930
 	github.com/openshift/machine-api-operator v0.2.1-0.20210505133115-b7ef098180db
 	github.com/vincent-petithory/dataurl v0.0.0-20160330182126-9a301d65acbb // indirect
 	go4.org v0.0.0-20191010144846-132d2879e1e9 // indirect
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.21.0
-	k8s.io/apimachinery v0.21.0
-	k8s.io/client-go v0.21.0
-	k8s.io/cluster-bootstrap v0.0.0-20190202014938-c9acc0c1bea2
+	k8s.io/api v0.21.1
+	k8s.io/apimachinery v0.21.1
+	k8s.io/client-go v0.21.1
+	k8s.io/cluster-bootstrap v0.21.1
 	k8s.io/klog v1.0.0
-	k8s.io/klog/v2 v2.8.0
-	sigs.k8s.io/controller-runtime v0.9.0-beta.0.0.20210503121002-0c99fc7f46fb
+	k8s.io/klog/v2 v2.9.0
+	sigs.k8s.io/cluster-api v0.4.0-beta.1 // indirect
+	sigs.k8s.io/cluster-api-provider-openstack v0.3.5
+	sigs.k8s.io/controller-runtime v0.9.0
 	sigs.k8s.io/yaml v1.2.0
 )
 

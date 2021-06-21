@@ -21,7 +21,7 @@ import (
 
 	configclient "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	"k8s.io/client-go/kubernetes"
-	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/openstack"
+	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 

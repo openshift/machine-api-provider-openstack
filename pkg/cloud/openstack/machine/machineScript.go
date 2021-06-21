@@ -21,7 +21,7 @@ import (
 	"text/template"
 
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
-	openstackconfigv1 "sigs.k8s.io/cluster-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
+	openstackconfigv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 )
 
 type setupParams struct {

@@ -29,6 +29,12 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/client-go/tools/record"
 
+	openstackconfigv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
+	"shiftstack/machine-api-provider-openstack/pkg/bootstrap"
+	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack"
+	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/clients"
+	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/options"
+
 	"github.com/gophercloud/gophercloud"
 	gophercloudopenstack "github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
@@ -42,11 +48,6 @@ import (
 	tokenapi "k8s.io/cluster-bootstrap/token/api"
 	tokenutil "k8s.io/cluster-bootstrap/token/util"
 	"k8s.io/klog/v2"
-	openstackconfigv1 "sigs.k8s.io/cluster-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
-	"sigs.k8s.io/cluster-api-provider-openstack/pkg/bootstrap"
-	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/openstack"
-	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/openstack/clients"
-	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/openstack/options"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clconfig "github.com/coreos/container-linux-config-transpiler/config"
