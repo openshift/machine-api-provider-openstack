@@ -45,6 +45,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	tokenapi "k8s.io/cluster-bootstrap/token/api"
 	tokenutil "k8s.io/cluster-bootstrap/token/util"
 	"k8s.io/klog/v2"
@@ -107,6 +108,98 @@ func getTimeout(name string, timeout int) time.Duration {
 	return time.Duration(timeout)
 }
 
+func (oc *OpenstackClient) getUserData(machine *machinev1.Machine, providerSpec *openstackconfigv1.OpenstackProviderSpec, kubeClient kubernetes.Interface) (string, error) {
+	// get machine startup script
+	var ok bool
+	var disableTemplating bool
+	var postprocessor string
+	var postprocess bool
+
+	userData := []byte{}
+	if providerSpec.UserDataSecret != nil {
+		namespace := providerSpec.UserDataSecret.Namespace
+		if namespace == "" {
+			namespace = machine.Namespace
+		}
+
+		if providerSpec.UserDataSecret.Name == "" {
+			return "", fmt.Errorf("UserDataSecret name must be provided")
+		}
+
+		userDataSecret, err := kubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), providerSpec.UserDataSecret.Name, metav1.GetOptions{})
+		if err != nil {
+			return "", err
+		}
+
+		userData, ok = userDataSecret.Data[UserDataKey]
+		if !ok {
+			return "", fmt.Errorf("Machine's userdata secret %v in namespace %v did not contain key %v", providerSpec.UserDataSecret.Name, namespace, UserDataKey)
+		}
+
+		_, disableTemplating = userDataSecret.Data[DisableTemplatingKey]
+
+		var p []byte
+		p, postprocess = userDataSecret.Data[PostprocessorKey]
+
+		postprocessor = string(p)
+	}
+
+	var userDataRendered string
+	var err error
+	if len(userData) > 0 && !disableTemplating {
+		// FIXME(mandre) Find the right way to check if machine is part of the control plane
+		if machine.ObjectMeta.Name != "" {
+			userDataRendered, err = masterStartupScript(machine, string(userData))
+			if err != nil {
+				return "", oc.handleMachineError(machine, apierrors.CreateMachine(
+					"error creating Openstack instance: %v", err), createEventAction)
+			}
+		} else {
+			klog.Info("Creating bootstrap token")
+			token, err := oc.createBootstrapToken()
+			if err != nil {
+				return "", oc.handleMachineError(machine, apierrors.CreateMachine(
+					"error creating Openstack instance: %v", err), createEventAction)
+			}
+			userDataRendered, err = nodeStartupScript(machine, token, string(userData))
+			if err != nil {
+				return "", oc.handleMachineError(machine, apierrors.CreateMachine(
+					"error creating Openstack instance: %v", err), createEventAction)
+			}
+		}
+	} else {
+		userDataRendered = string(userData)
+	}
+
+	if postprocess {
+		switch postprocessor {
+		// Postprocess with the Container Linux ct transpiler.
+		case "ct":
+			clcfg, ast, report := clconfig.Parse([]byte(userDataRendered))
+			if len(report.Entries) > 0 {
+				return "", fmt.Errorf("Postprocessor error: %s", report.String())
+			}
+
+			ignCfg, report := clconfig.Convert(clcfg, "openstack-metadata", ast)
+			if len(report.Entries) > 0 {
+				return "", fmt.Errorf("Postprocessor error: %s", report.String())
+			}
+
+			ud, err := json.Marshal(&ignCfg)
+			if err != nil {
+				return "", fmt.Errorf("Postprocessor error: %s", err)
+			}
+
+			userDataRendered = string(ud)
+
+		default:
+			return "", fmt.Errorf("Postprocessor error: unknown postprocessor: '%s'", postprocessor)
+		}
+	}
+
+	return userDataRendered, nil
+}
+
 func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machine) error {
 	// First check that provided labels are correct
 	// TODO(mfedosin): stop sending the infrastructure request when we start to receive the cluster value
@@ -164,98 +257,16 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 		return oc.handleMachineError(machine, verr, createEventAction)
 	}
 
-	// get machine startup script
-	var ok bool
-	var disableTemplating bool
-	var postprocessor string
-	var postprocess bool
-
-	userData := []byte{}
-	if providerSpec.UserDataSecret != nil {
-		namespace := providerSpec.UserDataSecret.Namespace
-		if namespace == "" {
-			namespace = machine.Namespace
-		}
-
-		if providerSpec.UserDataSecret.Name == "" {
-			return fmt.Errorf("UserDataSecret name must be provided")
-		}
-
-		userDataSecret, err := kubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), providerSpec.UserDataSecret.Name, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-
-		userData, ok = userDataSecret.Data[UserDataKey]
-		if !ok {
-			return fmt.Errorf("Machine's userdata secret %v in namespace %v did not contain key %v", providerSpec.UserDataSecret.Name, namespace, UserDataKey)
-		}
-
-		_, disableTemplating = userDataSecret.Data[DisableTemplatingKey]
-
-		var p []byte
-		p, postprocess = userDataSecret.Data[PostprocessorKey]
-
-		postprocessor = string(p)
+	userDataRendered, err := oc.getUserData(machine, providerSpec, kubeClient)
+	if err != nil {
+		return err
 	}
 
-	var userDataRendered string
-	if len(userData) > 0 && !disableTemplating {
-		// FIXME(mandre) Find the right way to check if machine is part of the control plane
-		if machine.ObjectMeta.Name != "" {
-			userDataRendered, err = masterStartupScript(machine, string(userData))
-			if err != nil {
-				return oc.handleMachineError(machine, apierrors.CreateMachine(
-					"error creating Openstack instance: %v", err), createEventAction)
-			}
-		} else {
-			klog.Info("Creating bootstrap token")
-			token, err := oc.createBootstrapToken()
-			if err != nil {
-				return oc.handleMachineError(machine, apierrors.CreateMachine(
-					"error creating Openstack instance: %v", err), createEventAction)
-			}
-			userDataRendered, err = nodeStartupScript(machine, token, string(userData))
-			if err != nil {
-				return oc.handleMachineError(machine, apierrors.CreateMachine(
-					"error creating Openstack instance: %v", err), createEventAction)
-			}
-		}
-	} else {
-		userDataRendered = string(userData)
-	}
-
-	//Read the cluster name from the `machine`.
+	// Read the cluster name from the `machine`.
 	clusterName := fmt.Sprintf("%s-%s", machine.Namespace, machine.Labels["machine.openshift.io/cluster-api-cluster"])
 
 	// TODO(egarcia): if we ever use the cluster object, this will benifit from reading from it
 	var clusterSpec openstackconfigv1.OpenstackClusterProviderSpec
-
-	if postprocess {
-		switch postprocessor {
-		// Postprocess with the Container Linux ct transpiler.
-		case "ct":
-			clcfg, ast, report := clconfig.Parse([]byte(userDataRendered))
-			if len(report.Entries) > 0 {
-				return fmt.Errorf("Postprocessor error: %s", report.String())
-			}
-
-			ignCfg, report := clconfig.Convert(clcfg, "openstack-metadata", ast)
-			if len(report.Entries) > 0 {
-				return fmt.Errorf("Postprocessor error: %s", report.String())
-			}
-
-			ud, err := json.Marshal(&ignCfg)
-			if err != nil {
-				return fmt.Errorf("Postprocessor error: %s", err)
-			}
-
-			userDataRendered = string(ud)
-
-		default:
-			return fmt.Errorf("Postprocessor error: unknown postprocessor: '%s'", postprocessor)
-		}
-	}
 
 	instance, err = machineService.InstanceCreate(clusterName, machine.Name, &clusterSpec, providerSpec, userDataRendered, providerSpec.KeyName, oc.params.ConfigClient)
 
