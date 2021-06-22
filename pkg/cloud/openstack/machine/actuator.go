@@ -39,6 +39,7 @@ import (
 	gophercloudopenstack "github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
+	"github.com/gophercloud/utils/openstack/clientconfig"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
 	apierrors "github.com/openshift/machine-api-operator/pkg/controller/machine"
 	"github.com/openshift/machine-api-operator/pkg/util"
@@ -106,6 +107,19 @@ func getTimeout(name string, timeout int) time.Duration {
 		}
 	}
 	return time.Duration(timeout)
+}
+
+func (oc *OpenstackClient) getProviderClient(machine *machinev1.Machine) (*gophercloud.ProviderClient, *clientconfig.Cloud, error) {
+	cloud, err := clients.GetCloud(oc.params.KubeClient, machine)
+	if err != nil {
+		return nil, nil, err
+	}
+	provider, err := clients.GetProviderClient(cloud, clients.GetCACertificate(oc.params.KubeClient))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return provider, &cloud, nil
 }
 
 func (oc *OpenstackClient) getUserData(machine *machinev1.Machine, providerSpec *openstackconfigv1.OpenstackProviderSpec, kubeClient kubernetes.Interface) (string, error) {
@@ -519,11 +533,7 @@ func (oc *OpenstackClient) getPrimaryMachineIP(mapAddr map[string]string, machin
 	// PrimarySubnet should always be set in the machine api in 4.6
 	primarySubnet := config.PrimarySubnet
 
-	cloud, err := clients.GetCloud(oc.params.KubeClient, machine)
-	if err != nil {
-		return "", err
-	}
-	provider, err := clients.GetProviderClient(cloud, clients.GetCACertificate(oc.params.KubeClient))
+	provider, cloud, err := oc.getProviderClient(machine)
 	if err != nil {
 		return "", err
 	}
