@@ -41,6 +41,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	"github.com/gophercloud/utils/openstack/compute/v2/flavors"
+	version "github.com/hashicorp/go-version"
 	"k8s.io/apimachinery/pkg/runtime"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/util"
@@ -253,6 +254,22 @@ func (s *Service) createInstance(eventObject runtime.Object, clusterName string,
 
 	mc := metrics.NewMetricPrometheusContext("server", "create")
 
+	var microversionStr string
+	if s.computeClient.Microversion == "" {
+		microversionStr = "0"
+	} else {
+		microversionStr = s.computeClient.Microversion
+	}
+	microversion, err := version.NewVersion(microversionStr)
+	if err != nil {
+		return nil, err
+	}
+	if len(instance.Tags) > 0 {
+		tagsVersion, _ := version.NewVersion("2.52")
+		if microversion.LessThan(tagsVersion) {
+			s.computeClient.Microversion = "2.52"
+		}
+	}
 	server, err := servers.Create(s.computeClient, keypairs.CreateOptsExt{
 		CreateOptsBuilder: serverCreateOpts,
 		KeyName:           instance.SSHKeyName,

@@ -35,4 +35,6 @@ replace (
 	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v0.4.0-beta.1
 	sigs.k8s.io/cluster-api-provider-aws => github.com/openshift/cluster-api-provider-aws v0.2.1-0.20210505150511-f9cb840ae412
 	sigs.k8s.io/cluster-api-provider-azure => github.com/openshift/cluster-api-provider-azure v0.1.0-alpha.3.0.20210505133115-b2eda16dd665
+	// upstream-working branch in github.com/shiftstack/cluster-api-provider-openstack
+	sigs.k8s.io/cluster-api-provider-openstack => github.com/shiftstack/cluster-api-provider-openstack v0.0.0-20210624075857-82903264ea22
 )
