@@ -102,7 +102,6 @@ github.com/googleapis/gnostic/openapiv2
 ## explicit
 github.com/gophercloud/gophercloud
 github.com/gophercloud/gophercloud/openstack
-github.com/gophercloud/gophercloud/openstack/blockstorage/v3/volumes
 github.com/gophercloud/gophercloud/openstack/common/extensions
 github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/attachinterfaces
 github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/availabilityzones
@@ -110,7 +109,6 @@ github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/bootfromvolum
 github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/floatingips
 github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs
 github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/schedulerhints
-github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/servergroups
 github.com/gophercloud/gophercloud/openstack/compute/v2/flavors
 github.com/gophercloud/gophercloud/openstack/compute/v2/servers
 github.com/gophercloud/gophercloud/openstack/identity/v2/tenants

@@ -27,37 +27,3 @@ func TestMachineServiceInstance(t *testing.T) {
 		t.Errorf("Couldn't create instance service: %v", err)
 	}
 }
-
-func TestDeduplicateLists(t *testing.T) {
-	list1 := []string{"1", "2", "3", "a", "b", "c"}
-	list2 := []string{"1", "c"}
-
-	// Case 1: Lists with no duplicates has same elements
-	result := deduplicateList(list1)
-	if !equal(result, list1) {
-		t.Errorf("List with no duplicates should contain the same elements. \n\tExpected:%v\n\tGot:%v", list1, result)
-	}
-
-	// Case 2: Lists with duplicates have coppies of elements removed
-	dupe1 := append(list1, list2...)
-	result = deduplicateList(dupe1)
-	if !equal(list1, result) {
-		t.Errorf("List with duplicates should have coppies of elements removed.\n\tExpected:%v\n\tGot:%v", list1, result)
-	}
-}
-
-func equal(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	m := map[string]bool{}
-	for _, v := range a {
-		m[v] = true
-	}
-	for _, v := range b {
-		if _, ok := m[v]; !ok {
-			return false
-		}
-	}
-	return true
-}
