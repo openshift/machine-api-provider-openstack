@@ -29,6 +29,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/client-go/tools/record"
 
+	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+
 	openstackconfigv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 	"shiftstack/machine-api-provider-openstack/pkg/bootstrap"
 	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack"
@@ -50,6 +53,7 @@ import (
 	tokenapi "k8s.io/cluster-bootstrap/token/api"
 	tokenutil "k8s.io/cluster-bootstrap/token/util"
 	"k8s.io/klog/v2"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clconfig "github.com/coreos/container-linux-config-transpiler/config"
@@ -233,8 +237,15 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 	}
 
 	kubeClient := oc.params.KubeClient
+	provider, cloud, err := oc.getProviderClient(machine)
+	if err != nil {
+		return err
+	}
 
-	machineService, err := clients.NewInstanceServiceFromMachine(kubeClient, machine)
+	computeService, err := compute.NewService(provider, &clientconfig.ClientOpts{
+		AuthInfo:   cloud.AuthInfo,
+		RegionName: cloud.RegionName,
+	}, ctrl.Log)
 	if err != nil {
 		return err
 	}
@@ -250,7 +261,7 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 		return oc.handleMachineError(machine, verr, createEventAction)
 	}
 
-	instance, err := oc.instanceExists(machine)
+	instance, err := computeService.InstanceExists(machine.Name)
 	if err != nil {
 		return err
 	}
@@ -282,35 +293,38 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 	// TODO(egarcia): if we ever use the cluster object, this will benifit from reading from it
 	var clusterSpec openstackconfigv1.OpenstackClusterProviderSpec
 
-	instance, err = machineService.InstanceCreate(clusterName, machine.Name, &clusterSpec, providerSpec, userDataRendered, providerSpec.KeyName, oc.params.ConfigClient)
-
+	// Convert to v1alpha4
+	osMachine, err := openstackconfigv1.NewOpenStackMachine(machine)
 	if err != nil {
-		return oc.handleMachineError(machine, apierrors.CreateMachine(
-			"error creating Openstack instance: %v", err), createEventAction)
+		return err
 	}
-	instanceCreateTimeout := getTimeout("CLUSTER_API_OPENSTACK_INSTANCE_CREATE_TIMEOUT", TimeoutInstanceCreate)
-	instanceCreateTimeout = instanceCreateTimeout * time.Minute
-	err = util.PollImmediate(RetryIntervalInstanceStatus, instanceCreateTimeout, func() (bool, error) {
-		instance, err := machineService.GetInstance(instance.ID)
-		if err != nil {
-			return false, nil
-		}
-		return instance.Status == "ACTIVE", nil
-	})
+	osCluster := openstackconfigv1.NewOpenStackCluster(clusterSpec, openstackconfigv1.OpenstackClusterProviderStatus{})
+	if err != nil {
+		return err
+	}
+
+	// XXX(mdbooth): v1Machine is also used to set security group based on IsControlPlaneMachine
+	v1Machine := clusterv1.Machine{}
+	v1Machine.Spec.FailureDomain = &providerSpec.AvailabilityZone
+	instance, err = computeService.CreateInstance(&osCluster, &v1Machine, osMachine, clusterName, userDataRendered)
 	if err != nil {
 		return oc.handleMachineError(machine, apierrors.CreateMachine(
 			"error creating Openstack instance: %v", err), createEventAction)
 	}
 
 	if providerSpec.FloatingIP != "" {
-		err := machineService.AssociateFloatingIP(instance.ID, providerSpec.FloatingIP)
+		err := computeService.AssociateFloatingIP(instance.ID, providerSpec.FloatingIP)
 		if err != nil {
 			return oc.handleMachineError(machine, apierrors.CreateMachine(
 				"Associate floatingIP err: %v", err), createEventAction)
 		}
-
 	}
 
+	////////// SetMachineLabels() is called here and in Update(). We can probably pull it into a function in this module.
+	machineService, err := clients.NewInstanceServiceFromMachine(kubeClient, machine)
+	if err != nil {
+		return err
+	}
 	err = machineService.SetMachineLabels(machine, instance.ID)
 	if err != nil {
 		return nil
@@ -604,12 +618,15 @@ func (oc *OpenstackClient) updateAnnotation(machine *machinev1.Machine, instance
 		machine.ObjectMeta.Annotations = make(map[string]string)
 	}
 	machine.ObjectMeta.Annotations[openstack.OpenstackIdAnnotationKey] = instanceID
+
+	// XXX(mdbooth): In both places we call updateAnnotation(), instance is already available. We can pass it as an arg.
 	instance, _ := oc.instanceExists(machine)
 	mapAddr, err := getIPsFromInstance(instance)
 	if err != nil {
 		return err
 	}
 
+	// XXX(mdbooth): getPrimaryMachineIP uses a network client which we should already have
 	primaryIP, err := oc.getPrimaryMachineIP(mapAddr, machine, clusterInfraName)
 	if err != nil {
 		return err
