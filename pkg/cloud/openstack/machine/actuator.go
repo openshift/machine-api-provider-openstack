@@ -44,7 +44,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	"github.com/gophercloud/utils/openstack/clientconfig"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
-	apierrors "github.com/openshift/machine-api-operator/pkg/controller/machine"
+	maoMachine "github.com/openshift/machine-api-operator/pkg/controller/machine"
 	"github.com/openshift/machine-api-operator/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -169,19 +169,19 @@ func (oc *OpenstackClient) getUserData(machine *machinev1.Machine, providerSpec 
 		if machine.ObjectMeta.Name != "" {
 			userDataRendered, err = masterStartupScript(machine, string(userData))
 			if err != nil {
-				return "", oc.handleMachineError(machine, apierrors.CreateMachine(
+				return "", oc.handleMachineError(machine, maoMachine.CreateMachine(
 					"error creating Openstack instance: %v", err), createEventAction)
 			}
 		} else {
 			klog.Info("Creating bootstrap token")
 			token, err := oc.createBootstrapToken()
 			if err != nil {
-				return "", oc.handleMachineError(machine, apierrors.CreateMachine(
+				return "", oc.handleMachineError(machine, maoMachine.CreateMachine(
 					"error creating Openstack instance: %v", err), createEventAction)
 			}
 			userDataRendered, err = nodeStartupScript(machine, token, string(userData))
 			if err != nil {
-				return "", oc.handleMachineError(machine, apierrors.CreateMachine(
+				return "", oc.handleMachineError(machine, maoMachine.CreateMachine(
 					"error creating Openstack instance: %v", err), createEventAction)
 			}
 		}
@@ -218,6 +218,26 @@ func (oc *OpenstackClient) getUserData(machine *machinev1.Machine, providerSpec 
 	return userDataRendered, nil
 }
 
+func setMachineLabels(machine *machinev1.Machine, region, availability_zone, flavor string) {
+	// Don't update labels which have already been set
+	if machine.Labels[maoMachine.MachineRegionLabelName] != "" && machine.Labels[maoMachine.MachineAZLabelName] != "" && machine.Labels[maoMachine.MachineInstanceTypeLabelName] != "" {
+		return
+	}
+
+	if machine.Labels == nil {
+		machine.Labels = make(map[string]string)
+	}
+
+	// Set the region
+	machine.Labels[maoMachine.MachineRegionLabelName] = region
+
+	// Set the availability zone
+	machine.Labels[maoMachine.MachineAZLabelName] = availability_zone
+
+	// Set the flavor name
+	machine.Labels[maoMachine.MachineInstanceTypeLabelName] = flavor
+}
+
 func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machine) error {
 	// First check that provided labels are correct
 	// TODO(mfedosin): stop sending the infrastructure request when we start to receive the cluster value
@@ -231,7 +251,7 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 
 	if clusterNameLabel != clusterInfraName {
 		klog.Errorf("machine.openshift.io/cluster-api-cluster label value is incorrect: %v, machine %v cannot join cluster %v", clusterNameLabel, machine.ObjectMeta.Name, clusterInfraName)
-		verr := apierrors.InvalidMachineConfiguration("machine.openshift.io/cluster-api-cluster label value is incorrect: %v, machine %v cannot join cluster %v", clusterNameLabel, machine.ObjectMeta.Name, clusterInfraName)
+		verr := maoMachine.InvalidMachineConfiguration("machine.openshift.io/cluster-api-cluster label value is incorrect: %v, machine %v cannot join cluster %v", clusterNameLabel, machine.ObjectMeta.Name, clusterInfraName)
 
 		return oc.handleMachineError(machine, verr, createEventAction)
 	}
@@ -252,12 +272,12 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 
 	providerSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
-		return oc.handleMachineError(machine, apierrors.InvalidMachineConfiguration(
+		return oc.handleMachineError(machine, maoMachine.InvalidMachineConfiguration(
 			"Cannot unmarshal providerSpec field: %v", err), createEventAction)
 	}
 
 	if err = oc.validateMachine(machine); err != nil {
-		verr := apierrors.InvalidMachineConfiguration("Machine validation failed: %v", err)
+		verr := maoMachine.InvalidMachineConfiguration("Machine validation failed: %v", err)
 		return oc.handleMachineError(machine, verr, createEventAction)
 	}
 
@@ -277,7 +297,7 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 	// See https://bugzilla.redhat.com/show_bug.cgi?id=1746369
 	if machine.ObjectMeta.Annotations[InstanceStatusAnnotationKey] != "" {
 		klog.Errorf("The instance has been destroyed for the machine %v, cannot recreate it.\n", machine.ObjectMeta.Name)
-		verr := apierrors.InvalidMachineConfiguration("the instance has been destroyed for the machine %v, cannot recreate it.\n", machine.ObjectMeta.Name)
+		verr := maoMachine.InvalidMachineConfiguration("the instance has been destroyed for the machine %v, cannot recreate it.\n", machine.ObjectMeta.Name)
 
 		return oc.handleMachineError(machine, verr, createEventAction)
 	}
@@ -308,29 +328,21 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 	v1Machine.Spec.FailureDomain = &providerSpec.AvailabilityZone
 	instance, err = computeService.CreateInstance(&osCluster, &v1Machine, osMachine, clusterName, userDataRendered)
 	if err != nil {
-		return oc.handleMachineError(machine, apierrors.CreateMachine(
+		return oc.handleMachineError(machine, maoMachine.CreateMachine(
 			"error creating Openstack instance: %v", err), createEventAction)
 	}
 
 	if providerSpec.FloatingIP != "" {
 		err := computeService.AssociateFloatingIP(instance.ID, providerSpec.FloatingIP)
 		if err != nil {
-			return oc.handleMachineError(machine, apierrors.CreateMachine(
+			return oc.handleMachineError(machine, maoMachine.CreateMachine(
 				"Associate floatingIP err: %v", err), createEventAction)
 		}
 	}
 
-	////////// SetMachineLabels() is called here and in Update(). We can probably pull it into a function in this module.
-	machineService, err := clients.NewInstanceServiceFromMachine(kubeClient, machine)
-	if err != nil {
-		return err
-	}
-	err = machineService.SetMachineLabels(machine, instance.ID)
-	if err != nil {
-		return nil
-	}
-
 	oc.eventRecorder.Eventf(machine, corev1.EventTypeNormal, "Created", "Created machine %v", machine.Name)
+
+	setMachineLabels(machine, cloud.RegionName, instance.FailureDomain, providerSpec.Flavor)
 	return oc.updateAnnotation(machine, instance.ID, clusterInfraName)
 }
 
@@ -353,7 +365,7 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 	id := machine.ObjectMeta.Annotations[openstack.OpenstackIdAnnotationKey]
 	err = machineService.InstanceDelete(id)
 	if err != nil {
-		return oc.handleMachineError(machine, apierrors.DeleteMachine(
+		return oc.handleMachineError(machine, maoMachine.DeleteMachine(
 			"error deleting Openstack instance: %v", err), deleteEventAction)
 	}
 
@@ -363,7 +375,7 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 
 func (oc *OpenstackClient) Update(ctx context.Context, machine *machinev1.Machine) error {
 	if err := oc.validateMachine(machine); err != nil {
-		verr := &apierrors.MachineError{
+		verr := &maoMachine.MachineError{
 			Reason:  machinev1.UpdateMachineError,
 			Message: err.Error(),
 		}
@@ -414,7 +426,7 @@ func (oc *OpenstackClient) Update(ctx context.Context, machine *machinev1.Machin
 		// In this conditional block, Machine is Control Plane
 		// TODO: add master inplace
 		klog.Errorf("master inplace update failed: not supported")
-		return oc.handleMachineError(machine, apierrors.UpdateMachine(
+		return oc.handleMachineError(machine, maoMachine.UpdateMachine(
 			"master inplace update failed: not supported"), updateEventAction)
 	} else {
 		// In this conditional block, Machine is Compute Node
@@ -440,7 +452,7 @@ func (oc *OpenstackClient) Update(ctx context.Context, machine *machinev1.Machin
 			return instance == nil, nil
 		})
 		if err != nil {
-			return oc.handleMachineError(machine, apierrors.DeleteMachine(
+			return oc.handleMachineError(machine, maoMachine.DeleteMachine(
 				"error deleting Openstack instance: %v", err), updateEventAction)
 		}
 		klog.Infof("Successfully updated machine %s", currentMachine.ObjectMeta.Name)
@@ -586,7 +598,7 @@ func (oc *OpenstackClient) getPrimaryMachineIP(mapAddr map[string]string, machin
 // the appropriate reason/message on the Machine.Status. If not, such as during
 // cluster installation, it will operate as a no-op. It also returns the
 // original error for convenience, so callers can do "return handleMachineError(...)".
-func (oc *OpenstackClient) handleMachineError(machine *machinev1.Machine, err *apierrors.MachineError, eventAction string) error {
+func (oc *OpenstackClient) handleMachineError(machine *machinev1.Machine, err *maoMachine.MachineError, eventAction string) error {
 	if eventAction != noEventAction {
 		oc.eventRecorder.Eventf(machine, corev1.EventTypeWarning, "Failed"+eventAction, "%v", err.Reason)
 	}
