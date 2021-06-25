@@ -27,21 +27,17 @@ import (
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/common/extensions"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/attachinterfaces"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 	netext "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/portsecurity"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/trunks"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	"github.com/gophercloud/utils/openstack/clientconfig"
 	azutils "github.com/gophercloud/utils/openstack/compute/v2/availabilityzones"
 	flavorutils "github.com/gophercloud/utils/openstack/compute/v2/flavors"
 	imageutils "github.com/gophercloud/utils/openstack/imageservice/v2/images"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
-	"github.com/openshift/machine-api-operator/pkg/util"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -217,82 +213,6 @@ func NewInstanceServiceFromCloud(cloud clientconfig.Cloud, cert []byte) (*Instan
 		volumeClient:   volumeClient,
 		regionName:     cloud.RegionName,
 	}, nil
-}
-
-func (is *InstanceService) deleteInstancePorts(id string) error {
-	// get instance port id
-	allInterfaces, err := attachinterfaces.List(is.computeClient, id).AllPages()
-	if err != nil {
-		return err
-	}
-	instanceInterfaces, err := attachinterfaces.ExtractInterfaces(allInterfaces)
-	if err != nil {
-		return err
-	}
-	if len(instanceInterfaces) < 1 {
-		return servers.Delete(is.computeClient, id).ExtractErr()
-	}
-
-	trunkSupport, err := GetTrunkSupport(is)
-	if err != nil {
-		return fmt.Errorf("Obtaining network extensions err: %v", err)
-	}
-	// get and delete trunks
-	for _, port := range instanceInterfaces {
-		err := attachinterfaces.Delete(is.computeClient, id, port.PortID).ExtractErr()
-		if err != nil {
-			return err
-		}
-		if trunkSupport {
-			listOpts := trunks.ListOpts{
-				PortID: port.PortID,
-			}
-			allTrunks, err := trunks.List(is.networkClient, listOpts).AllPages()
-			if err != nil {
-				return err
-			}
-			trunkInfo, err := trunks.ExtractTrunks(allTrunks)
-			if err != nil {
-				return err
-			}
-			if len(trunkInfo) == 1 {
-				err = util.PollImmediate(RetryIntervalTrunkDelete, TimeoutTrunkDelete, func() (bool, error) {
-					err := trunks.Delete(is.networkClient, trunkInfo[0].ID).ExtractErr()
-					if err != nil {
-						return false, nil
-					}
-					return true, nil
-				})
-				if err != nil {
-					return fmt.Errorf("Error deleting the trunk %v", trunkInfo[0].ID)
-				}
-			}
-		}
-
-		// delete port
-		err = util.PollImmediate(RetryIntervalPortDelete, TimeoutPortDelete, func() (bool, error) {
-			err := ports.Delete(is.networkClient, port.PortID).ExtractErr()
-			if err != nil {
-				return false, nil
-			}
-			return true, nil
-		})
-		if err != nil {
-			return fmt.Errorf("Error deleting the port %v", port.PortID)
-		}
-	}
-
-	return nil
-}
-
-func (is *InstanceService) InstanceDelete(id string) error {
-	err := is.deleteInstancePorts(id)
-	if err != nil {
-		klog.Warningf("Couldn't delete all instance %v ports: %v", id, err)
-	}
-
-	// delete instance
-	return servers.Delete(is.computeClient, id).ExtractErr()
 }
 
 func GetTrunkSupport(is *InstanceService) (bool, error) {
