@@ -54,7 +54,6 @@ func NewOpenStackCluster(providerSpec OpenstackClusterProviderSpec, providerStat
 
 func (ps OpenstackProviderSpec) toMachineSpec() infrav1.OpenStackMachineSpec {
 	machineSpec := infrav1.OpenStackMachineSpec{
-		CloudsSecret:   ps.CloudsSecret,
 		CloudName:      ps.CloudName,
 		Flavor:         ps.Flavor,
 		Image:          ps.Image,
@@ -68,6 +67,10 @@ func (ps OpenstackProviderSpec) toMachineSpec() infrav1.OpenStackMachineSpec {
 		ServerMetadata: ps.ServerMetadata,
 		ConfigDrive:    ps.ConfigDrive,
 		ServerGroupID:  ps.ServerGroupID,
+		IdentityRef: &infrav1.OpenStackIdentityReference{
+			Kind: "secret",
+			Name: ps.CloudsSecret.Name,
+		},
 	}
 
 	// TODO: close upstream/downstream feature gap: zones
