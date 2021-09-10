@@ -22,6 +22,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+
+	capoerrors "sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/errors"
 )
 
 type OpenstackPrometheusMetrics struct {
@@ -47,7 +49,29 @@ func NewMetricPrometheusContext(resource string, request string) *MetricPromethe
 
 // ObserveRequest records the request latency and counts the errors.
 func (mc *MetricPrometheusContext) ObserveRequest(err error) error {
-	return mc.Observe(APIRequestPrometheusMetrics, err)
+	return mc.Observe(apiRequestPrometheusMetrics, err)
+}
+
+// ObserveRequestIgnoreNotFound records the request latency and counts the errors if it's not IsNotFound.
+func (mc *MetricPrometheusContext) ObserveRequestIgnoreNotFound(err error) error {
+	if capoerrors.IsNotFound(err) {
+		_ = mc.ObserveRequest(nil)
+		return err
+	}
+	return mc.ObserveRequest(err)
+}
+
+// ObserveRequestIgnoreNotFoundorConflict records the request latency and counts the errors if it's not IsNotFound or IsConflict.
+func (mc *MetricPrometheusContext) ObserveRequestIgnoreNotFoundorConflict(err error) error {
+	if capoerrors.IsNotFound(err) {
+		_ = mc.ObserveRequest(nil)
+		return err
+	}
+	if capoerrors.IsConflict(err) {
+		_ = mc.ObserveRequest(nil)
+		return err
+	}
+	return mc.ObserveRequest(err)
 }
 
 // Observe records the request latency and counts the errors.
@@ -66,7 +90,7 @@ func (mc *MetricPrometheusContext) Observe(om *OpenstackPrometheusMetrics, err e
 	return err
 }
 
-var APIRequestPrometheusMetrics = &OpenstackPrometheusMetrics{
+var apiRequestPrometheusMetrics = &OpenstackPrometheusMetrics{
 	Duration: prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "capo",
@@ -91,8 +115,8 @@ var registerAPIPrometheusMetrics sync.Once
 
 func RegisterAPIPrometheusMetrics() {
 	registerAPIPrometheusMetrics.Do(func() {
-		metrics.Registry.MustRegister(APIRequestPrometheusMetrics.Duration)
-		metrics.Registry.MustRegister(APIRequestPrometheusMetrics.Total)
-		metrics.Registry.MustRegister(APIRequestPrometheusMetrics.Errors)
+		metrics.Registry.MustRegister(apiRequestPrometheusMetrics.Duration)
+		metrics.Registry.MustRegister(apiRequestPrometheusMetrics.Total)
+		metrics.Registry.MustRegister(apiRequestPrometheusMetrics.Errors)
 	})
 }

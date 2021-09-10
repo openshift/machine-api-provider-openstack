@@ -23,7 +23,6 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/security/rules"
 
 	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha4"
-	"sigs.k8s.io/cluster-api-provider-openstack/pkg/metrics"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
 )
 
@@ -56,7 +55,7 @@ var defaultRules = []infrav1.SecurityGroupRule{
 	},
 }
 
-// Reconcile the security groups.
+// ReconcileSecurityGroups reconcile the security groups.
 func (s *Service) ReconcileSecurityGroups(openStackCluster *infrav1.OpenStackCluster, clusterName string) error {
 	s.logger.Info("Reconciling security groups", "cluster", clusterName)
 	if !openStackCluster.Spec.ManagedSecurityGroups {
@@ -90,7 +89,6 @@ func (s *Service) ReconcileSecurityGroups(openStackCluster *infrav1.OpenStackClu
 
 	observedSecGroups := make(map[string]*infrav1.SecurityGroup)
 	for k, desiredSecGroup := range desiredSecGroups {
-
 		var err error
 		observedSecGroups[k], err = s.getSecurityGroupByName(desiredSecGroup.Name)
 
@@ -334,6 +332,34 @@ func (s *Service) generateDesiredSecGroups(openStackCluster *infrav1.OpenStackCl
 	return desiredSecGroups, nil
 }
 
+func (s *Service) GetSecurityGroups(securityGroupParams []infrav1.SecurityGroupParam) ([]string, error) {
+	var sgIDs []string
+	for _, sg := range securityGroupParams {
+		listOpts := groups.ListOpts(sg.Filter)
+		if listOpts.ProjectID == "" {
+			listOpts.ProjectID = s.projectID
+		}
+		listOpts.Name = sg.Name
+		listOpts.ID = sg.UUID
+		SGList, err := s.client.ListSecGroup(listOpts)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(SGList) == 0 {
+			return nil, fmt.Errorf("security group %s not found", sg.Name)
+		}
+
+		for _, group := range SGList {
+			if isDuplicate(sgIDs, group.ID) {
+				continue
+			}
+			sgIDs = append(sgIDs, group.ID)
+		}
+	}
+	return sgIDs, nil
+}
+
 func (s *Service) DeleteSecurityGroups(openStackCluster *infrav1.OpenStackCluster, clusterName string) error {
 	secGroupNames := []string{
 		getSecControlPlaneGroupName(clusterName),
@@ -362,9 +388,8 @@ func (s *Service) deleteSecurityGroup(openStackCluster *infrav1.OpenStackCluster
 		// nothing to do
 		return nil
 	}
-	mc := metrics.NewMetricPrometheusContext("security_group", "delete")
-	err = groups.Delete(s.client, group.ID).ExtractErr()
-	if mc.ObserveRequest(err) != nil {
+	err = s.client.DeleteSecGroup(group.ID)
+	if err != nil {
 		record.Warnf(openStackCluster, "FailedDeleteSecurityGroup", "Failed to delete security group %s with id %s: %v", group.Name, group.ID, err)
 		return err
 	}
@@ -421,9 +446,8 @@ func (s *Service) reconcileGroupRules(desired, observed infrav1.SecurityGroup) (
 	s.logger.V(4).Info("Deleting rules not needed anymore for group", "name", observed.Name, "amount", len(rulesToDelete))
 	for _, rule := range rulesToDelete {
 		s.logger.V(6).Info("Deleting rule", "ruleID", rule.ID, "groupName", observed.Name)
-		mc := metrics.NewMetricPrometheusContext("security_group_rule", "delete")
-		err := rules.Delete(s.client, rule.ID).ExtractErr()
-		if mc.ObserveRequest(err) != nil {
+		err := s.client.DeleteSecGroupRule(rule.ID)
+		if err != nil {
 			return infrav1.SecurityGroup{}, err
 		}
 	}
@@ -460,15 +484,13 @@ func (s *Service) createSecurityGroupIfNotExists(openStackCluster *infrav1.OpenS
 		}
 		s.logger.V(6).Info("Creating group", "name", groupName)
 
-		mc := metrics.NewMetricPrometheusContext("security_group", "create")
-		group, err := groups.Create(s.client, createOpts).Extract()
-		if mc.ObserveRequest(err) != nil {
+		group, err := s.client.CreateSecGroup(createOpts)
+		if err != nil {
 			record.Warnf(openStackCluster, "FailedCreateSecurityGroup", "Failed to create security group %s: %v", groupName, err)
 			return err
 		}
 		record.Eventf(openStackCluster, "SuccessfulCreateSecurityGroup", "Created security group %s with id %s", groupName, group.ID)
 		return nil
-
 	}
 
 	sInfo := fmt.Sprintf("Reuse Existing SecurityGroup %s with %s", groupName, secGroup.ID)
@@ -483,12 +505,7 @@ func (s *Service) getSecurityGroupByName(name string) (*infrav1.SecurityGroup, e
 	}
 
 	s.logger.V(6).Info("Attempting to fetch security group with", "name", name)
-	allPages, err := groups.List(s.client, opts).AllPages()
-	if err != nil {
-		return &infrav1.SecurityGroup{}, err
-	}
-
-	allGroups, err := groups.ExtractGroups(allPages)
+	allGroups, err := s.client.ListSecGroup(opts)
 	if err != nil {
 		return &infrav1.SecurityGroup{}, err
 	}
@@ -520,9 +537,8 @@ func (s *Service) createRule(r infrav1.SecurityGroupRule) (infrav1.SecurityGroup
 		SecGroupID:     r.SecurityGroupID,
 	}
 	s.logger.V(6).Info("Creating rule", "Description", r.Description, "Direction", dir, "PortRangeMin", r.PortRangeMin, "PortRangeMax", r.PortRangeMax, "Proto", proto, "etherType", etherType, "RemoteGroupID", r.RemoteGroupID, "RemoteIPPrefix", r.RemoteIPPrefix, "SecurityGroupID", r.SecurityGroupID)
-	mc := metrics.NewMetricPrometheusContext("security_group_rule", "create")
-	rule, err := rules.Create(s.client, createOpts).Extract()
-	if mc.ObserveRequest(err) != nil {
+	rule, err := s.client.CreateSecGroupRule(createOpts)
+	if err != nil {
 		return infrav1.SecurityGroupRule{}, err
 	}
 	return convertOSSecGroupRuleToConfigSecGroupRule(*rule), nil
@@ -565,4 +581,16 @@ func convertOSSecGroupRuleToConfigSecGroupRule(osSecGroupRule rules.SecGroupRule
 		RemoteGroupID:   osSecGroupRule.RemoteGroupID,
 		RemoteIPPrefix:  osSecGroupRule.RemoteIPPrefix,
 	}
+}
+
+func isDuplicate(list []string, name string) bool {
+	if len(list) == 0 {
+		return false
+	}
+	for _, element := range list {
+		if element == name {
+			return true
+		}
+	}
+	return false
 }

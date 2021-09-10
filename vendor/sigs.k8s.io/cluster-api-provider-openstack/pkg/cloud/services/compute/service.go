@@ -33,11 +33,21 @@ type Service struct {
 	projectID         string
 	computeClient     *gophercloud.ServiceClient
 	identityClient    *gophercloud.ServiceClient
-	networkClient     *gophercloud.ServiceClient
 	imagesClient      *gophercloud.ServiceClient
 	networkingService *networking.Service
 	logger            logr.Logger
 }
+
+/*
+ NovaMinimumMicroversion is the minimum Nova microversion supported by CAPO
+ 2.53 corresponds to OpenStack Pike
+
+ For the canonical description of Nova microversions, see
+ https://docs.openstack.org/nova/latest/reference/api-microversion-history.html
+
+ CAPO uses server tags, which were added in microversion 2.52.
+*/
+const NovaMinimumMicroversion = "2.53"
 
 // NewService returns an instance of the compute service.
 func NewService(client *gophercloud.ProviderClient, clientOpts *clientconfig.ClientOpts, logger logr.Logger) (*Service, error) {
@@ -54,13 +64,7 @@ func NewService(client *gophercloud.ProviderClient, clientOpts *clientconfig.Cli
 	if err != nil {
 		return nil, fmt.Errorf("failed to create compute service client: %v", err)
 	}
-
-	networkingClient, err := openstack.NewNetworkV2(client, gophercloud.EndpointOpts{
-		Region: clientOpts.RegionName,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create networking service client: %v", err)
-	}
+	computeClient.Microversion = NovaMinimumMicroversion
 
 	imagesClient, err := openstack.NewImageServiceV2(client, gophercloud.EndpointOpts{
 		Region: clientOpts.RegionName,
@@ -94,7 +98,6 @@ func NewService(client *gophercloud.ProviderClient, clientOpts *clientconfig.Cli
 		projectID:         projectID,
 		identityClient:    identityClient,
 		computeClient:     computeClient,
-		networkClient:     networkingClient,
 		networkingService: networkingService,
 		imagesClient:      imagesClient,
 		logger:            logger,

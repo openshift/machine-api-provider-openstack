@@ -27,31 +27,28 @@ import (
 	"github.com/gophercloud/gophercloud/openstack"
 	osclient "github.com/gophercloud/utils/client"
 	"github.com/gophercloud/utils/openstack/clientconfig"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
 	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha4"
+	"sigs.k8s.io/cluster-api-provider-openstack/pkg/metrics"
 )
 
 const (
-	CloudsSecretKey = "clouds.yaml"
-	CaSecretKey     = "cacert"
+	cloudsSecretKey = "clouds.yaml"
+	caSecretKey     = "cacert"
 )
 
 func NewClientFromMachine(ctx context.Context, ctrlClient client.Client, openStackMachine *infrav1.OpenStackMachine) (*gophercloud.ProviderClient, *clientconfig.ClientOpts, error) {
 	var cloud clientconfig.Cloud
 	var caCert []byte
 
-	if openStackMachine.Spec.CloudsSecret != nil && openStackMachine.Spec.CloudsSecret.Name != "" {
-		namespace := openStackMachine.Spec.CloudsSecret.Namespace
-		if namespace == "" {
-			namespace = openStackMachine.Namespace
-		}
+	if openStackMachine.Spec.IdentityRef != nil {
 		var err error
-		cloud, caCert, err = getCloudFromSecret(ctx, ctrlClient, namespace, openStackMachine.Spec.CloudsSecret.Name, openStackMachine.Spec.CloudName)
+		cloud, caCert, err = getCloudFromSecret(ctx, ctrlClient, openStackMachine.Namespace, openStackMachine.Spec.IdentityRef.Name, openStackMachine.Spec.CloudName)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -63,13 +60,9 @@ func NewClientFromCluster(ctx context.Context, ctrlClient client.Client, openSta
 	var cloud clientconfig.Cloud
 	var caCert []byte
 
-	if openStackCluster.Spec.CloudsSecret != nil && openStackCluster.Spec.CloudsSecret.Name != "" {
-		namespace := openStackCluster.Spec.CloudsSecret.Namespace
-		if namespace == "" {
-			namespace = openStackCluster.Namespace
-		}
+	if openStackCluster.Spec.IdentityRef != nil {
 		var err error
-		cloud, caCert, err = getCloudFromSecret(ctx, ctrlClient, namespace, openStackCluster.Spec.CloudsSecret.Name, openStackCluster.Spec.CloudName)
+		cloud, caCert, err = getCloudFromSecret(ctx, ctrlClient, openStackCluster.Namespace, openStackCluster.Spec.IdentityRef.Name, openStackCluster.Spec.CloudName)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -140,7 +133,7 @@ func getCloudFromSecret(ctx context.Context, ctrlClient client.Client, secretNam
 		return emptyCloud, nil, fmt.Errorf("secret name set to %v but no cloud was specified. Please set cloud_name in your machine spec", secretName)
 	}
 
-	secret := &v1.Secret{}
+	secret := &corev1.Secret{}
 	err := ctrlClient.Get(ctx, types.NamespacedName{
 		Namespace: secretNamespace,
 		Name:      secretName,
@@ -149,10 +142,10 @@ func getCloudFromSecret(ctx context.Context, ctrlClient client.Client, secretNam
 		return emptyCloud, nil, err
 	}
 
-	content, ok := secret.Data[CloudsSecretKey]
+	content, ok := secret.Data[cloudsSecretKey]
 	if !ok {
 		return emptyCloud, nil, fmt.Errorf("OpenStack credentials secret %v did not contain key %v",
-			secretName, CloudsSecretKey)
+			secretName, cloudsSecretKey)
 	}
 	var clouds clientconfig.Clouds
 	if err = yaml.Unmarshal(content, &clouds); err != nil {
@@ -160,7 +153,7 @@ func getCloudFromSecret(ctx context.Context, ctrlClient client.Client, secretNam
 	}
 
 	// get caCert
-	caCert, ok := secret.Data[CaSecretKey]
+	caCert, ok := secret.Data[caSecretKey]
 	if !ok {
 		return clouds.Clouds[cloudName], nil, nil
 	}
@@ -184,8 +177,9 @@ func GetProjectID(client *gophercloud.ProviderClient, name string) (string, erro
 	}
 
 	jsonResp := projects{}
+	mc := metrics.NewMetricPrometheusContext("project", "get")
 	resp, err := c.Get(c.ServiceURL("auth", "projects"), &jsonResp, &gophercloud.RequestOpts{OkCodes: []int{200}})
-	if err != nil {
+	if mc.ObserveRequest(err) != nil {
 		return "", err
 	}
 	defer resp.Body.Close()

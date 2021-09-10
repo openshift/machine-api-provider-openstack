@@ -35,16 +35,15 @@ func (r *OpenStackMachineTemplate) SetupWebhookWithManager(mgr manager.Manager) 
 		Complete()
 }
 
-// +kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1alpha4-openstackmachinetemplate,mutating=false,failurePolicy=fail,matchPolicy=Equivalent,groups=infrastructure.cluster.x-k8s.io,resources=openstackmachinetemplates,versions=v1alpha4,name=validation.openstackmachinetemplate.infrastructure.x-k8s.io,sideEffects=None,admissionReviewVersions=v1beta1
+// +kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1alpha4-openstackmachinetemplate,mutating=false,failurePolicy=fail,matchPolicy=Equivalent,groups=infrastructure.cluster.x-k8s.io,resources=openstackmachinetemplates,versions=v1alpha4,name=validation.openstackmachinetemplate.infrastructure.cluster.x-k8s.io,sideEffects=None,admissionReviewVersions=v1beta1
 
 var _ webhook.Validator = &OpenStackMachineTemplate{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type.
 func (r *OpenStackMachineTemplate) ValidateCreate() error {
 	var allErrs field.ErrorList
-	spec := r.Spec.Template.Spec
 
-	if spec.ProviderID != nil {
+	if r.Spec.Template.Spec.ProviderID != nil {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec", "template", "spec", "providerID"), "cannot be set in templates"))
 	}
 
@@ -62,11 +61,7 @@ func (r *OpenStackMachineTemplate) ValidateUpdate(old runtime.Object) error {
 		)
 	}
 
-	if len(allErrs) != 0 {
-		return aggregateObjErrors(r.GroupVersionKind().GroupKind(), r.Name, allErrs)
-	}
-
-	return nil
+	return aggregateObjErrors(r.GroupVersionKind().GroupKind(), r.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type.
