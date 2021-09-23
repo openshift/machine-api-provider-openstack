@@ -2,7 +2,6 @@ package v1alpha1
 
 import (
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha4"
 )
 
@@ -142,10 +141,16 @@ func NewOpenStackMachine(machine *machinev1.Machine) (*infrav1.OpenStackMachine,
 		return nil, err
 	}
 
-	return &infrav1.OpenStackMachine{
-		ObjectMeta: v1.ObjectMeta{
-			Name: machine.Name,
-		},
-		Spec: providerSpec.toMachineSpec(),
-	}, nil
+	osMachine := &infrav1.OpenStackMachine{
+		ObjectMeta: machine.ObjectMeta,
+		Spec:       providerSpec.toMachineSpec(),
+	}
+
+	// if machine api master label exists, add v1beta control plane label to the node
+	// TODO(egarcia): fix the go mods so that we can track cluster-api@main and import this
+	if osMachine.ObjectMeta.Labels["machine.openshift.io/cluster-api-machine-role"] == "master" {
+		osMachine.ObjectMeta.Labels["cluster.x-k8s.io/control-plane"] = ""
+	}
+
+	return osMachine, nil
 }
