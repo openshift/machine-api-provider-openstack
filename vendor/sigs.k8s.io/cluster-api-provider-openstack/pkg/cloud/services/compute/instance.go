@@ -196,7 +196,7 @@ func (s *Service) createInstance(eventObject runtime.Object, clusterName string,
 	}
 
 	if instanceSpec.Subnet != "" && accessIPv4 == "" {
-		if err := s.networkingService.DeletePorts(eventObject, portList); err != nil {
+		if err := s.deletePorts(eventObject, portList); err != nil {
 			return nil, err
 		}
 		return nil, fmt.Errorf("no ports with fixed IPs found on Subnet %q", instanceSpec.Subnet)
@@ -239,7 +239,7 @@ func (s *Service) createInstance(eventObject runtime.Object, clusterName string,
 
 	if mc.ObserveRequest(err) != nil {
 		serverErr := err
-		if err = s.networkingService.DeletePorts(eventObject, portList); err != nil {
+		if err = s.deletePorts(eventObject, portList); err != nil {
 			return nil, fmt.Errorf("error creating OpenStack instance: %v, error deleting ports: %v", serverErr, err)
 		}
 		return nil, fmt.Errorf("error creating Openstack instance: %v", serverErr)
@@ -313,38 +313,71 @@ func applyServerGroupID(opts servers.CreateOptsBuilder, serverGroupID string) se
 
 func (s *Service) getServerNetworks(networkParams []infrav1.NetworkParam) ([]infrav1.Network, error) {
 	var nets []infrav1.Network
+
+	addSubnet := func(netID, subnetID string) {
+		nets = append(nets, infrav1.Network{
+			ID: netID,
+			Subnet: &infrav1.Subnet{
+				ID: subnetID,
+			},
+		})
+	}
+
+	addSubnets := func(networkParam infrav1.NetworkParam, netID string) error {
+		if len(networkParam.Subnets) == 0 && netID != "" {
+			addSubnet(netID, "")
+			return nil
+		}
+
+		for _, subnet := range networkParam.Subnets {
+			// Don't lookup subnet if it was specified explicitly by UUID
+			if subnet.UUID != "" {
+				// If subnet was supplied by UUID then network
+				// must also have been supplied by UUID.
+				if netID == "" {
+					return fmt.Errorf("validation error adding network for subnet %s: "+
+						"network uuid must be specified when subnet uuid is specified", subnet.UUID)
+				}
+
+				addSubnet(netID, subnet.UUID)
+			} else {
+				subnetOpts := subnets.ListOpts(subnet.Filter)
+				if netID != "" {
+					subnetOpts.NetworkID = netID
+				}
+				subnetsByFilter, err := s.networkingService.GetSubnetsByFilter(&subnetOpts)
+				if err != nil {
+					return err
+				}
+				for _, subnetByFilter := range subnetsByFilter {
+					addSubnet(subnetByFilter.NetworkID, subnetByFilter.ID)
+				}
+			}
+		}
+
+		return nil
+	}
+
 	for _, networkParam := range networkParams {
+		// Don't lookup network if we specified one explicitly by UUID
+		// Don't lookup network if we didn't specify a network filter
+		// If there is no explicit network UUID and no network filter,
+		// we will look for subnets matching any given subnet filters in
+		// all networks.
+		if networkParam.UUID != "" || networkParam.Filter == (infrav1.Filter{}) {
+			if err := addSubnets(networkParam, networkParam.UUID); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		opts := networks.ListOpts(networkParam.Filter)
-		opts.ID = networkParam.UUID
 		ids, err := s.networkingService.GetNetworkIDsByFilter(&opts)
 		if err != nil {
 			return nil, err
 		}
 		for _, netID := range ids {
-			if networkParam.Subnets == nil {
-				nets = append(nets, infrav1.Network{
-					ID:     netID,
-					Subnet: &infrav1.Subnet{},
-				})
-				continue
-			}
-
-			for _, subnet := range networkParam.Subnets {
-				subnetOpts := subnets.ListOpts(subnet.Filter)
-				subnetOpts.ID = subnet.UUID
-				subnetOpts.NetworkID = netID
-				subnetsByFilter, err := s.networkingService.GetSubnetsByFilter(&subnetOpts)
-				if err != nil {
-					return nil, err
-				}
-				for _, subnetByFilter := range subnetsByFilter {
-					nets = append(nets, infrav1.Network{
-						ID: subnetByFilter.NetworkID,
-						Subnet: &infrav1.Subnet{
-							ID: subnetByFilter.ID,
-						},
-					})
-				}
+			if err := addSubnets(networkParam, netID); err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -440,6 +473,15 @@ func (s *Service) DeleteInstance(eventObject runtime.Object, instance *InstanceS
 	}
 
 	return s.deleteInstance(eventObject, instanceIdentifier)
+}
+
+func (s *Service) deletePorts(eventObject runtime.Object, nets []servers.Network) error {
+	for _, n := range nets {
+		if err := s.networkingService.DeletePort(eventObject, n.Port); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) deleteAttachInterface(eventObject runtime.Object, instance *InstanceIdentifier, portID string) error {

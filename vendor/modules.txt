@@ -677,7 +677,7 @@ sigs.k8s.io/cluster-api/util/version
 sigs.k8s.io/cluster-api-provider-aws/pkg/apis/awsprovider/v1beta1
 # sigs.k8s.io/cluster-api-provider-azure v0.0.0-00010101000000-000000000000 => github.com/openshift/cluster-api-provider-azure v0.1.0-alpha.3.0.20210505133115-b2eda16dd665
 sigs.k8s.io/cluster-api-provider-azure/pkg/apis/azureprovider/v1beta1
-# sigs.k8s.io/cluster-api-provider-openstack v0.4.1-0.20210915072440-35351cb73567
+# sigs.k8s.io/cluster-api-provider-openstack v0.4.1-0.20210929020448-180f320d048e
 ## explicit
 sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha4
 sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute
