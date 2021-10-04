@@ -11,11 +11,13 @@ import (
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/utils/openstack/clientconfig"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
+	"gopkg.in/yaml.v2"
+
+	openstackconfigv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-	openstackconfigv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 )
 
 // GetCloud fetches cloud credentials from a secret and return a parsed Cloud structure
@@ -105,4 +107,34 @@ func GetProviderClient(cloud clientconfig.Cloud, cert []byte) (*gophercloud.Prov
 	}
 
 	return provider, nil
+}
+
+func GetCloudFromSecret(kubeClient kubernetes.Interface, namespace string, secretName string, cloudName string) (clientconfig.Cloud, error) {
+	emptyCloud := clientconfig.Cloud{}
+
+	if secretName == "" {
+		return emptyCloud, nil
+	}
+
+	if secretName != "" && cloudName == "" {
+		return emptyCloud, fmt.Errorf("Secret name set to %v but no cloud was specified. Please set cloud_name in your machine spec.", secretName)
+	}
+
+	secret, err := kubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
+	if err != nil {
+		return emptyCloud, fmt.Errorf("Failed to get secrets from kubernetes api: %v", err)
+	}
+
+	content, ok := secret.Data[CloudsSecretKey]
+	if !ok {
+		return emptyCloud, fmt.Errorf("OpenStack credentials secret %v did not contain key %v",
+			secretName, CloudsSecretKey)
+	}
+	var clouds clientconfig.Clouds
+	err = yaml.Unmarshal(content, &clouds)
+	if err != nil {
+		return emptyCloud, fmt.Errorf("failed to unmarshal clouds credentials stored in secret %v: %v", secretName, err)
+	}
+
+	return clouds.Clouds[cloudName], nil
 }

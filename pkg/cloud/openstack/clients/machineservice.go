@@ -17,110 +17,27 @@ limitations under the License.
 package clients
 
 import (
-	"context"
 	"fmt"
-	"time"
 
-	"gopkg.in/yaml.v2"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/portsecurity"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	"github.com/gophercloud/utils/openstack/clientconfig"
 	azutils "github.com/gophercloud/utils/openstack/compute/v2/availabilityzones"
 	flavorutils "github.com/gophercloud/utils/openstack/compute/v2/flavors"
 	imageutils "github.com/gophercloud/utils/openstack/imageservice/v2/images"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
 	CloudsSecretKey = "clouds.yaml"
-
-	TimeoutTrunkDelete       = 3 * time.Minute
-	RetryIntervalTrunkDelete = 5 * time.Second
-
-	TimeoutPortDelete       = 3 * time.Minute
-	RetryIntervalPortDelete = 5 * time.Second
-
-	// Maximum port name length supported by Neutron
-	PortNameMaxSize = 255
-
-	// MachineRegionLabelName as annotation name for a machine region
-	MachineRegionLabelName = "machine.openshift.io/region"
-
-	// MachineAZLabelName as annotation name for a machine AZ
-	MachineAZLabelName = "machine.openshift.io/zone"
-
-	// MachineInstanceTypeLabelName as annotation name for a machine instance type
-	MachineInstanceTypeLabelName = "machine.openshift.io/instance-type"
 )
 
 type InstanceService struct {
 	computeClient *gophercloud.ServiceClient
 	imagesClient  *gophercloud.ServiceClient
-
-	regionName string
-}
-
-type ServerNetwork struct {
-	networkID    string
-	subnetID     string
-	portTags     []string
-	vnicType     string
-	portSecurity *bool
-}
-
-// for updating the state of ports with port security
-var portWithPortSecurityExtensions struct {
-	ports.Port
-	portsecurity.PortSecurityExt
-}
-
-type serverMetadata struct {
-	// AZ contains name of the server's availability zone
-	AZ string `json:"OS-EXT-AZ:availability_zone"`
-
-	// Flavor refers to a JSON object, which itself indicates the hardware
-	// configuration of the deployed server.
-	Flavor map[string]interface{} `json:"flavor"`
-
-	// Status contains the current operational status of the server,
-	// such as IN_PROGRESS or ACTIVE.
-	Status string `json:"status"`
-}
-
-func GetCloudFromSecret(kubeClient kubernetes.Interface, namespace string, secretName string, cloudName string) (clientconfig.Cloud, error) {
-	emptyCloud := clientconfig.Cloud{}
-
-	if secretName == "" {
-		return emptyCloud, nil
-	}
-
-	if secretName != "" && cloudName == "" {
-		return emptyCloud, fmt.Errorf("Secret name set to %v but no cloud was specified. Please set cloud_name in your machine spec.", secretName)
-	}
-
-	secret, err := kubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
-	if err != nil {
-		return emptyCloud, fmt.Errorf("Failed to get secrets from kubernetes api: %v", err)
-	}
-
-	content, ok := secret.Data[CloudsSecretKey]
-	if !ok {
-		return emptyCloud, fmt.Errorf("OpenStack credentials secret %v did not contain key %v",
-			secretName, CloudsSecretKey)
-	}
-	var clouds clientconfig.Clouds
-	err = yaml.Unmarshal(content, &clouds)
-	if err != nil {
-		return emptyCloud, fmt.Errorf("failed to unmarshal clouds credentials stored in secret %v: %v", secretName, err)
-	}
-
-	return clouds.Clouds[cloudName], nil
 }
 
 // TODO: Eventually we'll have a NewInstanceServiceFromCluster too
