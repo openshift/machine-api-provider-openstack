@@ -18,7 +18,6 @@ package machine
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -31,7 +30,6 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 
 	openstackconfigv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
-	"shiftstack/machine-api-provider-openstack/pkg/bootstrap"
 	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack"
 	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/clients"
 
@@ -40,15 +38,10 @@ import (
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
 	maoMachine "github.com/openshift/machine-api-operator/pkg/controller/machine"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
-
-	clconfig "github.com/coreos/container-linux-config-transpiler/config"
 )
 
 const (
@@ -109,95 +102,6 @@ func (oc *OpenstackClient) getProviderClient(machine *machinev1.Machine) (*gophe
 	}
 
 	return provider, &cloud, nil
-}
-
-func (oc *OpenstackClient) getUserData(machine *machinev1.Machine, providerSpec *openstackconfigv1.OpenstackProviderSpec, kubeClient kubernetes.Interface) (string, error) {
-	// get machine startup script
-	var ok bool
-	var disableTemplating bool
-	var postprocessor string
-	var postprocess bool
-
-	userData := []byte{}
-	if providerSpec.UserDataSecret != nil {
-		namespace := providerSpec.UserDataSecret.Namespace
-		if namespace == "" {
-			namespace = machine.Namespace
-		}
-
-		if providerSpec.UserDataSecret.Name == "" {
-			return "", fmt.Errorf("UserDataSecret name must be provided")
-		}
-
-		userDataSecret, err := kubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), providerSpec.UserDataSecret.Name, metav1.GetOptions{})
-		if err != nil {
-			return "", err
-		}
-
-		userData, ok = userDataSecret.Data[UserDataKey]
-		if !ok {
-			return "", fmt.Errorf("Machine's userdata secret %v in namespace %v did not contain key %v", providerSpec.UserDataSecret.Name, namespace, UserDataKey)
-		}
-
-		_, disableTemplating = userDataSecret.Data[DisableTemplatingKey]
-
-		var p []byte
-		p, postprocess = userDataSecret.Data[PostprocessorKey]
-
-		postprocessor = string(p)
-	}
-
-	var userDataRendered string
-	var err error
-	if len(userData) > 0 && !disableTemplating {
-		// FIXME(mandre) Find the right way to check if machine is part of the control plane
-		if machine.ObjectMeta.Name != "" {
-			userDataRendered, err = masterStartupScript(machine, string(userData))
-			if err != nil {
-				return "", fmt.Errorf("error creating Openstack instance: %v", err)
-			}
-		} else {
-			klog.Info("Creating bootstrap token")
-			token, err := bootstrap.CreateBootstrapToken(oc.client)
-			if err != nil {
-				return "", fmt.Errorf("error creating Openstack instance: %v", err)
-			}
-			userDataRendered, err = nodeStartupScript(machine, token, string(userData))
-			if err != nil {
-				return "", fmt.Errorf("error creating Openstack instance: %v", err)
-			}
-		}
-	} else {
-		userDataRendered = string(userData)
-	}
-
-	if postprocess {
-		switch postprocessor {
-		// Postprocess with the Container Linux ct transpiler.
-		case "ct":
-			clcfg, ast, report := clconfig.Parse([]byte(userDataRendered))
-			if len(report.Entries) > 0 {
-				return "", fmt.Errorf("Postprocessor error: %s", report.String())
-			}
-
-			ignCfg, report := clconfig.Convert(clcfg, "openstack-metadata", ast)
-			if len(report.Entries) > 0 {
-				return "", fmt.Errorf("Postprocessor error: %s", report.String())
-			}
-
-			ud, err := json.Marshal(&ignCfg)
-			if err != nil {
-				return "", fmt.Errorf("Postprocessor error: %s", err)
-			}
-
-			userDataRendered = string(ud)
-
-		default:
-			return "", fmt.Errorf("Postprocessor error: unknown postprocessor: '%s'", postprocessor)
-		}
-	}
-
-	return userDataRendered, nil
 }
 
 func setMachineLabels(machine *machinev1.Machine, region, availability_zone, flavor string) {
@@ -337,7 +241,7 @@ func (oc *OpenstackClient) setProviderID(ctx context.Context, machine *machinev1
 		return nil
 	}
 
-	patch := runtimeclient.MergeFromWithOptions(machine.DeepCopy(), runtimeclient.MergeFromWithOptimisticLock{})
+	patch := client.MergeFromWithOptions(machine.DeepCopy(), client.MergeFromWithOptimisticLock{})
 
 	providerID := fmt.Sprintf("%s%s", providerPrefix, instanceID)
 	machine.Spec.ProviderID = &providerID
@@ -475,7 +379,7 @@ func (oc *OpenstackClient) updateMachine(ctx context.Context, machine *machinev1
 		}
 	}
 
-	patch := runtimeclient.MergeFrom(machine.DeepCopy())
+	patch := client.MergeFrom(machine.DeepCopy())
 
 	setMachineLabels(machine, osc.cloud.RegionName, instanceStatus.AvailabilityZone(), providerSpec.Flavor)
 	return oc.updateStatus(ctx, machine, instanceStatus, patch)
@@ -538,7 +442,7 @@ func (oc *OpenstackClient) handleMachineError(machine *machinev1.Machine, err *m
 	return err
 }
 
-func (oc *OpenstackClient) updateStatus(ctx context.Context, machine *machinev1.Machine, instanceStatus *compute.InstanceStatus, patch runtimeclient.Patch) error {
+func (oc *OpenstackClient) updateStatus(ctx context.Context, machine *machinev1.Machine, instanceStatus *compute.InstanceStatus, patch client.Patch) error {
 	// TODO: Delete InstanceStatusAnnotationKey if it is set
 	//const InstanceStatusAnnotationKey = "instance-status"
 
