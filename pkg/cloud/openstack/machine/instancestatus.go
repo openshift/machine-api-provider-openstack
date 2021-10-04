@@ -25,7 +25,6 @@ import (
 
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -36,21 +35,6 @@ import (
 const InstanceStatusAnnotationKey = "instance-status"
 
 type instanceStatus *machinev1.Machine
-
-// Get the status of the instance identified by the given machine
-func (oc *OpenstackClient) instanceStatus(machine *machinev1.Machine) (instanceStatus, error) {
-	currentMachine, err := GetMachineIfExists(oc.client, machine.Namespace, machine.Name)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if currentMachine == nil {
-		// The current status no longer exists because the matching CRD has been deleted (or does not exist yet ie. bootstrapping)
-		return nil, nil
-	}
-	return oc.machineInstanceStatus(currentMachine)
-}
 
 // Get a `machinev1.Machine` matching the specified name and namespace.
 //
@@ -96,29 +80,6 @@ func (oc *OpenstackClient) updateInstanceStatus(machine *machinev1.Machine) erro
 	}
 
 	return oc.client.Update(context.TODO(), m)
-}
-
-// Gets the state of the instance stored on the given machine CRD
-func (oc *OpenstackClient) machineInstanceStatus(machine *machinev1.Machine) (instanceStatus, error) {
-	if machine.ObjectMeta.Annotations == nil {
-		// No state
-		return nil, nil
-	}
-
-	a := machine.ObjectMeta.Annotations[InstanceStatusAnnotationKey]
-	if a == "" {
-		// No state
-		return nil, nil
-	}
-
-	serializer := json.NewSerializer(json.DefaultMetaFactory, oc.scheme, oc.scheme, false)
-	var status machinev1.Machine
-	_, _, err := serializer.Decode([]byte(a), &schema.GroupVersionKind{Group: "machine.openshift.io", Version: "v1beta1", Kind: "Machine"}, &status)
-	if err != nil {
-		return nil, fmt.Errorf("decoding failure: %v", err)
-	}
-
-	return instanceStatus(&status), nil
 }
 
 // Applies the state of an instance onto a given machine CRD
