@@ -33,6 +33,12 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const (
+	UserDataKey          = "userData"
+	DisableTemplatingKey = "disableTemplating"
+	PostprocessorKey     = "postprocessor"
+)
+
 type setupParams struct {
 	Token       string
 	Machine     *machinev1.Machine

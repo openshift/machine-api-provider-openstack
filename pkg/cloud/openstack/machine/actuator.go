@@ -44,22 +44,10 @@ import (
 )
 
 const (
-	UserDataKey          = "userData"
-	DisableTemplatingKey = "disableTemplating"
-	PostprocessorKey     = "postprocessor"
-
-	// MachineInstanceStateAnnotationName as annotation name for a machine instance state
-	MachineInstanceStateAnnotationName = "machine.openshift.io/instance-state"
-
-	// ErrorState is assigned to the machine if its instance has been destroyed
-	ErrorState = "ERROR"
-
 	// The prefix of ProviderID for OpenStack machines
 	providerPrefix = "openstack:///"
-)
 
-// Event Action Constants
-const (
+	// Event Action Constants
 	createEventAction = "Create"
 	updateEventAction = "Update"
 	deleteEventAction = "Delete"
@@ -146,7 +134,7 @@ func (oc *OpenstackClient) getOpenStackContext(machine *machinev1.Machine) (*ope
 }
 
 func getClusterNameWithNamespace(machine *machinev1.Machine) string {
-	clusterName := machine.Labels["machine.openshift.io/cluster-api-cluster"]
+	clusterName := machine.Labels[machinev1.MachineClusterIDLabel]
 	return fmt.Sprintf("%s-%s", machine.Namespace, clusterName)
 }
 
