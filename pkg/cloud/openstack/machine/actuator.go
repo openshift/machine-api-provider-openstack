@@ -51,20 +51,18 @@ const (
 )
 
 type OpenstackClient struct {
-	params openstack.ActuatorParams
-	scheme *runtime.Scheme
-	client client.Client
-	*openstack.DeploymentClient
+	params        openstack.ActuatorParams
+	scheme        *runtime.Scheme
+	client        client.Client
 	eventRecorder record.EventRecorder
 }
 
 func NewActuator(params openstack.ActuatorParams) (*OpenstackClient, error) {
 	return &OpenstackClient{
-		params:           params,
-		client:           params.Client,
-		scheme:           params.Scheme,
-		DeploymentClient: openstack.NewDeploymentClient(),
-		eventRecorder:    params.EventRecorder,
+		params:        params,
+		client:        params.Client,
+		scheme:        params.Scheme,
+		eventRecorder: params.EventRecorder,
 	}, nil
 }
 
