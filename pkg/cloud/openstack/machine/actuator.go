@@ -101,6 +101,20 @@ func (oc *OpenstackClient) setProviderID(ctx context.Context, machine *machinev1
 	return oc.client.Patch(ctx, machine, patch)
 }
 
+func getInstanceStatus(machine *machinev1.Machine, computeService *compute.Service) (*compute.InstanceStatus, error) {
+	providerID := machine.Spec.ProviderID
+	if providerID == nil {
+		return computeService.GetInstanceStatusByName(machine, machine.Name)
+	}
+
+	if !strings.HasPrefix(*providerID, providerPrefix) {
+		return nil, fmt.Errorf("OpenStack Machine %s has invalid provider ID: %s", machine.Name, *providerID)
+	}
+
+	instanceID := (*providerID)[len(providerPrefix):]
+	return computeService.GetInstanceStatus(instanceID)
+}
+
 func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machine) error {
 	providerSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
@@ -172,19 +186,6 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 	return nil
 }
 
-func getInstanceID(machine *machinev1.Machine) (string, error) {
-	providerID := machine.Spec.ProviderID
-	if providerID == nil {
-		return "", nil
-	}
-
-	if !strings.HasPrefix(*providerID, providerPrefix) {
-		return "", fmt.Errorf("OpenStack Machine %s has invalid provider ID: %s", machine.Name, *providerID)
-	}
-
-	return (*providerID)[len(providerPrefix):], nil
-}
-
 func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machine) error {
 	osc, err := oc.getOpenStackContext(machine)
 	if err != nil {
@@ -196,29 +197,17 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 		return oc.handleMachineError(machine, maoMachine.DeleteMachine("%v", err), deleteEventAction)
 	}
 
-	instanceID, err := getInstanceID(machine)
-	if err != nil {
-		return oc.handleMachineError(machine, maoMachine.DeleteMachine("%v", err), deleteEventAction)
-	}
-
-	var instanceStatus *compute.InstanceStatus
-	if instanceID != "" {
-		instanceStatus, err = computeService.GetInstanceStatus(instanceID)
-	} else {
-		instanceStatus, err = computeService.GetInstanceStatusByName(machine, machine.Name)
-	}
+	instanceStatus, err := getInstanceStatus(machine, computeService)
 	if err != nil {
 		return oc.handleMachineError(machine, maoMachine.DeleteMachine(
 			"error getting OpenStack instance: %v", err), deleteEventAction)
 	}
-
 	if instanceStatus == nil {
 		klog.Infof("Skipped deleting %s that is already deleted.\n", machine.Name)
 		return nil
 	}
 
-	var clusterSpec openstackconfigv1.OpenstackClusterProviderSpec
-	osCluster := openstackconfigv1.NewOpenStackCluster(clusterSpec, openstackconfigv1.OpenstackClusterProviderStatus{})
+	osCluster := getOSCluster()
 	if err != nil {
 		return err
 	}
@@ -248,22 +237,16 @@ func (oc *OpenstackClient) Update(ctx context.Context, machine *machinev1.Machin
 		return oc.handleMachineError(machine, maoMachine.UpdateMachine("%v", err), updateEventAction)
 	}
 
-	// Handle upgrade of Machine with no ProviderID set
-	instanceID, err := getInstanceID(machine)
+	instanceStatus, err := getInstanceStatus(machine, computeService)
 	if err != nil {
-		return oc.handleMachineError(machine, maoMachine.InvalidMachineConfiguration("%v", err), updateEventAction)
-	}
-	if instanceID == "" {
-		instanceStatus, err := computeService.GetInstanceStatusByName(machine, machine.Name)
-		if err != nil {
-			return oc.handleMachineError(machine, maoMachine.UpdateMachine("%v", err), updateEventAction)
-		}
-		return oc.setProviderID(ctx, machine, instanceStatus.ID())
+		return oc.handleMachineError(machine, maoMachine.UpdateMachine("error getting instance: %v", err), updateEventAction)
 	}
 
-	instanceStatus, err := computeService.GetInstanceStatus(instanceID)
-	if err != nil {
-		return oc.handleMachineError(machine, maoMachine.UpdateMachine("%v", err), updateEventAction)
+	// Upgrade of Machine with no ProviderID set
+	if machine.Spec.ProviderID == nil {
+		if err = oc.setProviderID(ctx, machine, instanceStatus.ID()); err != nil {
+			return oc.handleMachineError(machine, maoMachine.UpdateMachine("error setting provier ID: %v", err), updateEventAction)
+		}
 	}
 
 	osCluster := getOSCluster()
@@ -359,11 +342,6 @@ func updateStatus(machine *machinev1.Machine, instanceStatus *compute.InstanceSt
 }
 
 func (oc *OpenstackClient) Exists(ctx context.Context, machine *machinev1.Machine) (bool, error) {
-	instanceID, err := getInstanceID(machine)
-	if err != nil {
-		return false, err
-	}
-
 	osc, err := oc.getOpenStackContext(machine)
 	if err != nil {
 		return false, err
@@ -374,12 +352,7 @@ func (oc *OpenstackClient) Exists(ctx context.Context, machine *machinev1.Machin
 		return false, err
 	}
 
-	var instanceStatus *compute.InstanceStatus
-	if instanceID != "" {
-		instanceStatus, err = computeService.GetInstanceStatus(instanceID)
-	} else {
-		instanceStatus, err = computeService.GetInstanceStatusByName(machine, machine.Name)
-	}
+	instanceStatus, err := getInstanceStatus(machine, computeService)
 	if err != nil {
 		return false, nil
 	}
