@@ -43,10 +43,6 @@ type setupParams struct {
 	Token       string
 	Machine     *machinev1.Machine
 	MachineSpec *openstackconfigv1.OpenstackProviderSpec
-
-	PodCIDR           string
-	ServiceCIDR       string
-	GetMasterEndpoint func() (string, error)
 }
 
 func init() {
