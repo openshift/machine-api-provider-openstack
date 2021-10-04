@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -49,7 +49,7 @@ func TestGenerateTokenSecret(t *testing.T) {
 
 	for _, testcase := range testcases {
 		t.Run(testcase.name, func(t *testing.T) {
-			secret, err := GenerateTokenSecret(testcase.secret, expiration)
+			secret, err := generateTokenSecret(testcase.secret, expiration)
 			if desc, ok := testcase.wantErr(err); !ok {
 				t.Errorf("expected %s, got %v", desc, err)
 			}

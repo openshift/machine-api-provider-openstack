@@ -34,7 +34,6 @@ import (
 	"shiftstack/machine-api-provider-openstack/pkg/bootstrap"
 	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack"
 	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/clients"
-	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/options"
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/utils/openstack/clientconfig"
@@ -44,8 +43,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
-	tokenapi "k8s.io/cluster-bootstrap/token/api"
-	tokenutil "k8s.io/cluster-bootstrap/token/util"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -157,20 +154,17 @@ func (oc *OpenstackClient) getUserData(machine *machinev1.Machine, providerSpec 
 		if machine.ObjectMeta.Name != "" {
 			userDataRendered, err = masterStartupScript(machine, string(userData))
 			if err != nil {
-				return "", oc.handleMachineError(machine, maoMachine.CreateMachine(
-					"error creating Openstack instance: %v", err), createEventAction)
+				return "", fmt.Errorf("error creating Openstack instance: %v", err)
 			}
 		} else {
 			klog.Info("Creating bootstrap token")
-			token, err := oc.createBootstrapToken()
+			token, err := bootstrap.CreateBootstrapToken(oc.client)
 			if err != nil {
-				return "", oc.handleMachineError(machine, maoMachine.CreateMachine(
-					"error creating Openstack instance: %v", err), createEventAction)
+				return "", fmt.Errorf("error creating Openstack instance: %v", err)
 			}
 			userDataRendered, err = nodeStartupScript(machine, token, string(userData))
 			if err != nil {
-				return "", oc.handleMachineError(machine, maoMachine.CreateMachine(
-					"error creating Openstack instance: %v", err), createEventAction)
+				return "", fmt.Errorf("error creating Openstack instance: %v", err)
 			}
 		}
 	} else {
@@ -568,29 +562,6 @@ func (oc *OpenstackClient) updateStatus(ctx context.Context, machine *machinev1.
 	machine.Status.Addresses = networkAddresses
 
 	return oc.client.Status().Patch(ctx, machine, patch)
-}
-
-func (oc *OpenstackClient) createBootstrapToken() (string, error) {
-	token, err := tokenutil.GenerateBootstrapToken()
-	if err != nil {
-		return "", err
-	}
-
-	expiration := time.Now().UTC().Add(options.TokenTTL)
-	tokenSecret, err := bootstrap.GenerateTokenSecret(token, expiration)
-	if err != nil {
-		panic(fmt.Sprintf("unable to create token. there might be a bug somwhere: %v", err))
-	}
-
-	err = oc.client.Create(context.TODO(), tokenSecret)
-	if err != nil {
-		return "", err
-	}
-
-	return tokenutil.TokenFromIDAndSecret(
-		string(tokenSecret.Data[tokenapi.BootstrapTokenIDKey]),
-		string(tokenSecret.Data[tokenapi.BootstrapTokenSecretKey]),
-	), nil
 }
 
 func (oc *OpenstackClient) validateMachine(machine *machinev1.Machine) error {

@@ -16,20 +16,23 @@ limitations under the License.
 package bootstrap
 
 import (
+	"context"
 	"fmt"
+	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/options"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	tokenapi "k8s.io/cluster-bootstrap/token/api"
 	tokenutil "k8s.io/cluster-bootstrap/token/util"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // GeneratesTokenSecret returns a Secret conform to kubeadms bootstrap tokens
 // Inspired by https://github.com/kubernetes/kubernetes/blob/03a145de8ad282764828f43821433001974718e9/cmd/kubeadm/app/apis/kubeadm/bootstraptokenhelpers.go#L34
 // and the underlying type BootstrapToken.
 // We might change the implementation if a type BootstrapToken hits client-go.
-func GenerateTokenSecret(token string, expiration time.Time) (*v1.Secret, error) {
+func generateTokenSecret(token string, expiration time.Time) (*v1.Secret, error) {
 	substrs := tokenutil.BootstrapTokenRegexp.FindStringSubmatch(token)
 	if len(substrs) != 3 {
 		return nil, fmt.Errorf("the bootstrap token %q was not in the form %q", token, tokenapi.BootstrapTokenPattern)
@@ -57,4 +60,27 @@ func GenerateTokenSecret(token string, expiration time.Time) (*v1.Secret, error)
 		Type: v1.SecretType(tokenapi.SecretTypeBootstrapToken),
 		Data: data,
 	}, nil
+}
+
+func CreateBootstrapToken(client client.Client) (string, error) {
+	token, err := tokenutil.GenerateBootstrapToken()
+	if err != nil {
+		return "", err
+	}
+
+	expiration := time.Now().UTC().Add(options.TokenTTL)
+	tokenSecret, err := generateTokenSecret(token, expiration)
+	if err != nil {
+		panic(fmt.Sprintf("unable to create token. there might be a bug somwhere: %v", err))
+	}
+
+	err = client.Create(context.TODO(), tokenSecret)
+	if err != nil {
+		return "", err
+	}
+
+	return tokenutil.TokenFromIDAndSecret(
+		string(tokenSecret.Data[tokenapi.BootstrapTokenIDKey]),
+		string(tokenSecret.Data[tokenapi.BootstrapTokenSecretKey]),
+	), nil
 }
