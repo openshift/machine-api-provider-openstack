@@ -260,28 +260,40 @@ func (oc *OpenstackClient) Update(ctx context.Context, machine *machinev1.Machin
 
 func (oc *OpenstackClient) updateMachine(ctx context.Context, machine *machinev1.Machine, osc *openStackContext, providerSpec *openstackconfigv1.OpenstackProviderSpec, instanceStatus *compute.InstanceStatus, osCluster *v1alpha4.OpenStackCluster) error {
 	if providerSpec.FloatingIP != "" {
-		// TODO: Check if the instance already has this FloatingIP
-		networkService, err := osc.getNetworkService()
+		networkStatus, err := instanceStatus.NetworkStatus()
 		if err != nil {
 			return err
 		}
-		fp, err := networkService.GetOrCreateFloatingIP(osCluster, getClusterNameWithNamespace(machine), providerSpec.FloatingIP)
-		if err != nil {
-			return fmt.Errorf("get floatingIP err: %v", err)
+		var addressExists bool
+		for _, address := range networkStatus.Addresses() {
+			if address.Type == corev1.NodeExternalIP && address.Address == providerSpec.FloatingIP {
+				addressExists = true
+				break
+			}
 		}
-		computeService, err := osc.getComputeService()
-		if err != nil {
-			return err
-		}
-		// XXX(mdbooth): Network isn't set on osCluster, so this won't work
-		port, err := computeService.GetManagementPort(osCluster, instanceStatus)
-		if err != nil {
-			return fmt.Errorf("get management port err: %v", err)
-		}
+		if !addressExists {
+			networkService, err := osc.getNetworkService()
+			if err != nil {
+				return err
+			}
+			fp, err := networkService.GetOrCreateFloatingIP(osCluster, getClusterNameWithNamespace(machine), providerSpec.FloatingIP)
+			if err != nil {
+				return fmt.Errorf("get floatingIP err: %v", err)
+			}
+			computeService, err := osc.getComputeService()
+			if err != nil {
+				return err
+			}
+			// XXX(mdbooth): Network isn't set on osCluster, so this won't work
+			port, err := computeService.GetManagementPort(osCluster, instanceStatus)
+			if err != nil {
+				return fmt.Errorf("get management port err: %v", err)
+			}
 
-		err = networkService.AssociateFloatingIP(osCluster, fp, port.ID)
-		if err != nil {
-			return fmt.Errorf("associate floatingIP err: %v", err)
+			err = networkService.AssociateFloatingIP(osCluster, fp, port.ID)
+			if err != nil {
+				return fmt.Errorf("associate floatingIP err: %v", err)
+			}
 		}
 	}
 
