@@ -87,6 +87,20 @@ func getOSCluster() v1alpha4.OpenStackCluster {
 	return openstackconfigv1.NewOpenStackCluster(clusterSpec, openstackconfigv1.OpenstackClusterProviderStatus{})
 }
 
+func (oc *OpenstackClient) setProviderID(ctx context.Context, machine *machinev1.Machine, instanceID string) error {
+	// Don't update existing providerID
+	if machine.Spec.ProviderID != nil {
+		return nil
+	}
+
+	patch := client.MergeFromWithOptions(machine.DeepCopy(), client.MergeFromWithOptimisticLock{})
+
+	providerID := fmt.Sprintf("%s%s", providerPrefix, instanceID)
+	machine.Spec.ProviderID = &providerID
+
+	return oc.client.Patch(ctx, machine, patch)
+}
+
 func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machine) error {
 	providerSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
@@ -156,20 +170,6 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 	}
 
 	return nil
-}
-
-func (oc *OpenstackClient) setProviderID(ctx context.Context, machine *machinev1.Machine, instanceID string) error {
-	// Don't update existing providerID
-	if machine.Spec.ProviderID != nil {
-		return nil
-	}
-
-	patch := client.MergeFromWithOptions(machine.DeepCopy(), client.MergeFromWithOptimisticLock{})
-
-	providerID := fmt.Sprintf("%s%s", providerPrefix, instanceID)
-	machine.Spec.ProviderID = &providerID
-
-	return oc.client.Patch(ctx, machine, patch)
 }
 
 func getInstanceID(machine *machinev1.Machine) (string, error) {
