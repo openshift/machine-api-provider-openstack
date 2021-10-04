@@ -26,10 +26,7 @@ import (
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
-	"github.com/gophercloud/gophercloud/openstack/common/extensions"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
-	netext "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/portsecurity"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	"github.com/gophercloud/utils/openstack/clientconfig"
@@ -63,18 +60,10 @@ const (
 )
 
 type InstanceService struct {
-	provider       *gophercloud.ProviderClient
-	computeClient  *gophercloud.ServiceClient
-	identityClient *gophercloud.ServiceClient
-	networkClient  *gophercloud.ServiceClient
-	imagesClient   *gophercloud.ServiceClient
-	volumeClient   *gophercloud.ServiceClient
+	computeClient *gophercloud.ServiceClient
+	imagesClient  *gophercloud.ServiceClient
 
 	regionName string
-}
-
-type Instance struct {
-	servers.Server
 }
 
 type ServerNetwork struct {
@@ -89,20 +78,6 @@ type ServerNetwork struct {
 var portWithPortSecurityExtensions struct {
 	ports.Port
 	portsecurity.PortSecurityExt
-}
-
-type InstanceListOpts struct {
-	// Name of the image in URL format.
-	Image string `q:"image"`
-
-	// Name of the flavor in URL format.
-	Flavor string `q:"flavor"`
-
-	// Name of the server as a string; can be queried with regular expressions.
-	// Realize that ?name=bob returns both bob and bobb. If you need to match bob
-	// only, you can use a regular expression matching the syntax of the
-	// underlying database server implemented for Compute.
-	Name string `q:"name"`
 }
 
 type serverMetadata struct {
@@ -169,96 +144,24 @@ func NewInstanceServiceFromCloud(cloud clientconfig.Cloud, cert []byte) (*Instan
 		return nil, err
 	}
 
-	identityClient, err := openstack.NewIdentityV3(provider, gophercloud.EndpointOpts{
-		Region: "",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("Create identityClient err: %v", err)
-	}
 	serverClient, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
 		Region: cloud.RegionName,
 	})
-
 	if err != nil {
-		return nil, fmt.Errorf("Create serviceClient err: %v", err)
-	}
-
-	networkingClient, err := openstack.NewNetworkV2(provider, gophercloud.EndpointOpts{
-		Region: cloud.RegionName,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("Create networkingClient err: %v", err)
+		return nil, fmt.Errorf("create serviceClient err: %v", err)
 	}
 
 	imagesClient, err := openstack.NewImageServiceV2(provider, gophercloud.EndpointOpts{
 		Region: cloud.RegionName,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Create ImageClient err: %v", err)
-	}
-
-	volumeClient, err := openstack.NewBlockStorageV3(provider, gophercloud.EndpointOpts{
-		Region: cloud.RegionName,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("Create VolumeClient err: %v", err)
+		return nil, fmt.Errorf("create ImageClient err: %v", err)
 	}
 
 	return &InstanceService{
-		provider:       provider,
-		identityClient: identityClient,
-		computeClient:  serverClient,
-		networkClient:  networkingClient,
-		imagesClient:   imagesClient,
-		volumeClient:   volumeClient,
-		regionName:     cloud.RegionName,
+		computeClient: serverClient,
+		imagesClient:  imagesClient,
 	}, nil
-}
-
-func GetTrunkSupport(is *InstanceService) (bool, error) {
-	allPages, err := netext.List(is.networkClient).AllPages()
-	if err != nil {
-		return false, err
-	}
-
-	allExts, err := extensions.ExtractExtensions(allPages)
-	if err != nil {
-		return false, err
-	}
-
-	for _, ext := range allExts {
-		if ext.Alias == "trunk" {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func (is *InstanceService) GetInstanceList(opts *InstanceListOpts) ([]*Instance, error) {
-	var listOpts servers.ListOpts
-	if opts != nil {
-		listOpts = servers.ListOpts{
-			// Name is a regular expression, so we need to explicitly specify a
-			// whole string match. https://bugzilla.redhat.com/show_bug.cgi?id=1747270
-			Name: fmt.Sprintf("^%s$", opts.Name),
-		}
-	} else {
-		listOpts = servers.ListOpts{}
-	}
-
-	allPages, err := servers.List(is.computeClient, listOpts).AllPages()
-	if err != nil {
-		return nil, fmt.Errorf("Get service list err: %v", err)
-	}
-	serverList, err := servers.ExtractServers(allPages)
-	if err != nil {
-		return nil, fmt.Errorf("Extract services list err: %v", err)
-	}
-	var instanceList []*Instance
-	for _, server := range serverList {
-		instanceList = append(instanceList, serverToInstance(&server))
-	}
-	return instanceList, nil
 }
 
 // DoesFlavorExist returns nil if exactly one flavor exists with the given name.
@@ -293,62 +196,15 @@ func (is *InstanceService) DoesAvailabilityZoneExist(azName string) error {
 	return fmt.Errorf("could not find compute availability zone: %s", azName)
 }
 
-func (is *InstanceService) GetInstance(resourceId string) (instance *Instance, err error) {
-	if resourceId == "" {
-		return nil, fmt.Errorf("ResourceId should be specified to  get detail.")
-	}
-	server, err := servers.Get(is.computeClient, resourceId).Extract()
-	if err != nil {
-		return nil, fmt.Errorf("Get server %q detail failed: %v", resourceId, err)
-	}
-	return serverToInstance(server), err
-}
-
-// SetMachineLabels set labels describing the machine
-func (is *InstanceService) SetMachineLabels(machine *machinev1.Machine, instanceID string) error {
-	if machine.Labels[MachineRegionLabelName] != "" && machine.Labels[MachineAZLabelName] != "" && machine.Labels[MachineInstanceTypeLabelName] != "" {
-		return nil
-	}
-
-	var sm serverMetadata
-	err := servers.Get(is.computeClient, instanceID).ExtractInto(&sm)
-	if err != nil {
-		return err
-	}
-
-	if machine.Labels == nil {
-		machine.Labels = make(map[string]string)
-	}
-
-	// Set the region
-	machine.Labels[MachineRegionLabelName] = is.regionName
-
-	// Set the availability zone
-	machine.Labels[MachineAZLabelName] = sm.AZ
-
-	// Set the flavor name
-	flavor, err := flavors.Get(is.computeClient, sm.Flavor["id"].(string)).Extract()
-	if err != nil {
-		return err
-	}
-	machine.Labels[MachineInstanceTypeLabelName] = flavor.Name
-
-	return nil
-}
-
 func (is *InstanceService) GetFlavorInfo(flavorID string) (flavor *flavors.Flavor, err error) {
 
 	info, err := flavors.Get(is.computeClient, flavorID).Extract()
 	if err != nil {
-		return nil, fmt.Errorf("Could not find information for flavor id %s", flavorID)
+		return nil, fmt.Errorf("could not find information for flavor id %s", flavorID)
 	}
 	return info, nil
 }
 
 func (is *InstanceService) GetFlavorID(flavorName string) (string, error) {
 	return flavorutils.IDFromName(is.computeClient, flavorName)
-}
-
-func serverToInstance(server *servers.Server) *Instance {
-	return &Instance{*server}
 }

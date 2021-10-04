@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"k8s.io/client-go/tools/record"
 
@@ -45,15 +44,9 @@ import (
 )
 
 const (
-	CloudConfigPath = "/etc/cloud/cloud_config.yaml"
-
 	UserDataKey          = "userData"
 	DisableTemplatingKey = "disableTemplating"
 	PostprocessorKey     = "postprocessor"
-
-	TimeoutInstanceCreate       = 5
-	TimeoutInstanceDelete       = 5
-	RetryIntervalInstanceStatus = 10 * time.Second
 
 	// MachineInstanceStateAnnotationName as annotation name for a machine instance state
 	MachineInstanceStateAnnotationName = "machine.openshift.io/instance-state"
@@ -382,7 +375,37 @@ func (oc *OpenstackClient) updateMachine(ctx context.Context, machine *machinev1
 	patch := client.MergeFrom(machine.DeepCopy())
 
 	setMachineLabels(machine, osc.cloud.RegionName, instanceStatus.AvailabilityZone(), providerSpec.Flavor)
-	return oc.updateStatus(ctx, machine, instanceStatus, patch)
+	if err := updateStatus(machine, instanceStatus); err != nil {
+		return err
+	}
+
+	return oc.client.Status().Patch(ctx, machine, patch)
+}
+
+func updateStatus(machine *machinev1.Machine, instanceStatus *compute.InstanceStatus) error {
+	// TODO: Delete InstanceStatusAnnotationKey if it is set
+	//const InstanceStatusAnnotationKey = "instance-status"
+
+	// Former annotations
+	// machine.ObjectMeta.Annotations[openstack.OpenstackIdAnnotationKey] = instanceID
+	// machine.ObjectMeta.Annotations[openstack.OpenstackIPAnnotationKey] = primaryIP
+
+	networkStatus, err := instanceStatus.NetworkStatus()
+	if err != nil {
+		return err
+	}
+	networkAddresses := networkStatus.Addresses()
+	networkAddresses = append(networkAddresses, corev1.NodeAddress{
+		Type:    corev1.NodeHostName,
+		Address: machine.Name,
+	})
+	networkAddresses = append(networkAddresses, corev1.NodeAddress{
+		Type:    corev1.NodeInternalDNS,
+		Address: machine.Name,
+	})
+	machine.Status.Addresses = networkAddresses
+
+	return nil
 }
 
 func (oc *OpenstackClient) Exists(ctx context.Context, machine *machinev1.Machine) (bool, error) {
@@ -431,7 +454,6 @@ func (oc *OpenstackClient) handleMachineError(machine *machinev1.Machine, err *m
 		if machine.ObjectMeta.Annotations == nil {
 			machine.ObjectMeta.Annotations = make(map[string]string)
 		}
-		machine.ObjectMeta.Annotations[MachineInstanceStateAnnotationName] = ErrorState
 
 		if err := oc.client.Update(context.TODO(), machine); err != nil {
 			return fmt.Errorf("unable to update machine status: %v", err)
@@ -440,32 +462,6 @@ func (oc *OpenstackClient) handleMachineError(machine *machinev1.Machine, err *m
 
 	klog.Errorf("Machine error %s: %v", machine.Name, err.Message)
 	return err
-}
-
-func (oc *OpenstackClient) updateStatus(ctx context.Context, machine *machinev1.Machine, instanceStatus *compute.InstanceStatus, patch client.Patch) error {
-	// TODO: Delete InstanceStatusAnnotationKey if it is set
-	//const InstanceStatusAnnotationKey = "instance-status"
-
-	// Former annotations
-	// machine.ObjectMeta.Annotations[openstack.OpenstackIdAnnotationKey] = instanceID
-	// machine.ObjectMeta.Annotations[openstack.OpenstackIPAnnotationKey] = primaryIP
-
-	networkStatus, err := instanceStatus.NetworkStatus()
-	if err != nil {
-		return err
-	}
-	networkAddresses := networkStatus.Addresses()
-	networkAddresses = append(networkAddresses, corev1.NodeAddress{
-		Type:    corev1.NodeHostName,
-		Address: machine.Name,
-	})
-	networkAddresses = append(networkAddresses, corev1.NodeAddress{
-		Type:    corev1.NodeInternalDNS,
-		Address: machine.Name,
-	})
-	machine.Status.Addresses = networkAddresses
-
-	return oc.client.Status().Patch(ctx, machine, patch)
 }
 
 func (oc *OpenstackClient) validateMachine(machine *machinev1.Machine) error {
