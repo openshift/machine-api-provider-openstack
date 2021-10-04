@@ -473,7 +473,8 @@ func (oc *OpenstackClient) updateMachine(ctx context.Context, machine *machinev1
 		if err != nil {
 			return err
 		}
-		port, err := computeService.GetManagementPort(instanceStatus)
+		// XXX(mdbooth): Network isn't set on osCluster, so this won't work
+		port, err := computeService.GetManagementPort(osCluster, instanceStatus)
 		if err != nil {
 			return fmt.Errorf("get management port err: %v", err)
 		}

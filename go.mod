@@ -26,7 +26,7 @@ require (
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.9.0
 	sigs.k8s.io/cluster-api v0.4.0
-	sigs.k8s.io/cluster-api-provider-openstack v0.4.1-0.20210929020448-180f320d048e
+	sigs.k8s.io/cluster-api-provider-openstack v0.4.1-0.20211004105908-1358f6e728e7
 	sigs.k8s.io/controller-runtime v0.9.6
 	sigs.k8s.io/yaml v1.2.0
 )
