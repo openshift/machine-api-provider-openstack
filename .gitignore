@@ -136,3 +136,4 @@ zz_generated.openapi.go
 
 # binaries
 /bin
+/machine-controller
