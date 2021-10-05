@@ -20,6 +20,10 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const (
+	CloudsSecretKey = "clouds.yaml"
+)
+
 // GetCloud fetches cloud credentials from a secret and return a parsed Cloud structure
 func GetCloud(kubeClient kubernetes.Interface, machine *machinev1.Machine) (clientconfig.Cloud, error) {
 	cloud := clientconfig.Cloud{}

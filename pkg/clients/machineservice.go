@@ -31,10 +31,6 @@ import (
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
 )
 
-const (
-	CloudsSecretKey = "clouds.yaml"
-)
-
 type InstanceService struct {
 	computeClient *gophercloud.ServiceClient
 	imagesClient  *gophercloud.ServiceClient
