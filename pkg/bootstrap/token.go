@@ -18,7 +18,6 @@ package bootstrap
 import (
 	"context"
 	"fmt"
-	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/options"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -68,7 +67,7 @@ func CreateBootstrapToken(client client.Client) (string, error) {
 		return "", err
 	}
 
-	expiration := time.Now().UTC().Add(options.TokenTTL)
+	expiration := time.Now().UTC().Add(TokenTTL)
 	tokenSecret, err := generateTokenSecret(token, expiration)
 	if err != nil {
 		panic(fmt.Sprintf("unable to create token. there might be a bug somwhere: %v", err))
