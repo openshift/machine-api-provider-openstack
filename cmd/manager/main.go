@@ -23,10 +23,8 @@ import (
 	"time"
 
 	"shiftstack/machine-api-provider-openstack/pkg/apis"
-	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/machine"
-	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/machineset"
-
-	ocm "shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/machine"
+	"shiftstack/machine-api-provider-openstack/pkg/machine"
+	"shiftstack/machine-api-provider-openstack/pkg/machineset"
 
 	configv1 "github.com/openshift/api/config/v1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
@@ -136,7 +134,7 @@ func main() {
 	}
 
 	params := getActuatorParams(mgr)
-	machineActuator, err := ocm.NewActuator(params)
+	machineActuator, err := machine.NewActuator(params)
 	if err != nil {
 		klog.Fatal(err)
 	}

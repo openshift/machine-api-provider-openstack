@@ -6,6 +6,9 @@ import (
 	"strconv"
 	"time"
 
+	openstackconfigv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
+	"shiftstack/machine-api-provider-openstack/pkg/clients"
+
 	"github.com/go-logr/logr"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
@@ -14,8 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
-	openstackconfigv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
-	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/clients"
 	ctrlRuntime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"

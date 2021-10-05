@@ -29,7 +29,7 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 
 	openstackconfigv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
-	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/clients"
+	"shiftstack/machine-api-provider-openstack/pkg/clients"
 
 	configclient "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
