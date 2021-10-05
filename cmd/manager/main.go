@@ -22,14 +22,20 @@ import (
 	"os"
 	"time"
 
+	"shiftstack/machine-api-provider-openstack/pkg/apis"
+	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/machine"
+	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/machineset"
+
+	ocm "shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/machine"
+
 	configv1 "github.com/openshift/api/config/v1"
+	configclient "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
+	maoMachine "github.com/openshift/machine-api-operator/pkg/controller/machine"
 	"github.com/openshift/machine-api-operator/pkg/metrics"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/klogr"
 	"k8s.io/klog/v2"
-	"shiftstack/machine-api-provider-openstack/pkg/apis"
-	"shiftstack/machine-api-provider-openstack/pkg/cloud/openstack/machineset"
-	"shiftstack/machine-api-provider-openstack/pkg/controller"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	rTcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
@@ -129,11 +135,18 @@ func main() {
 		klog.Fatal(err)
 	}
 
-	// Setup all Controllers
-	if err := controller.AddToManager(mgr); err != nil {
+	params := getActuatorParams(mgr)
+	machineActuator, err := ocm.NewActuator(params)
+	if err != nil {
 		klog.Fatal(err)
 	}
 
+	// Setup OpenStack Machine controller
+	if err := maoMachine.AddWithActuator(mgr, machineActuator); err != nil {
+		klog.Fatal(err)
+	}
+
+	// Setup OpenStack MachineSet controller
 	ctrl.SetLogger(klogr.New())
 	setupLog := ctrl.Log.WithName("setup")
 	if err = (&machineset.Reconciler{
@@ -156,4 +169,26 @@ func main() {
 
 	// Start the Cmd
 	log.Fatal(mgr.Start(signals.SetupSignalHandler()))
+}
+
+func getActuatorParams(mgr manager.Manager) machine.ActuatorParams {
+	config := mgr.GetConfig()
+
+	kubeClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		klog.Fatalf("Could not create kubernetes client to talk to the apiserver: %v", err)
+	}
+	configClient, err := configclient.NewForConfig(config)
+	if err != nil {
+		klog.Fatalf("Failed to create a config client to talk to the apiserver: %v", err)
+	}
+
+	return machine.ActuatorParams{
+		Client:        mgr.GetClient(),
+		KubeClient:    kubeClient,
+		ConfigClient:  configClient,
+		Scheme:        mgr.GetScheme(),
+		EventRecorder: mgr.GetEventRecorderFor("openstack_controller"),
+	}
+
 }
