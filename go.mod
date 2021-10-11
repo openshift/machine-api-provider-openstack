@@ -12,7 +12,7 @@ require (
 	github.com/gophercloud/gophercloud v0.16.0
 	github.com/gophercloud/utils v0.0.0-20210323225332-7b186010c04f
 	github.com/onsi/ginkgo v1.16.4
-	github.com/onsi/gomega v1.14.0
+	github.com/onsi/gomega v1.15.0
 	github.com/openshift/api v0.0.0-20210816181336-8ff39b776da3
 	github.com/openshift/client-go v0.0.0-20210730113412-1811c1b3fc0e
 	github.com/openshift/machine-api-operator v0.2.1-0.20211004171036-7f86cf768d40
@@ -25,9 +25,9 @@ require (
 	k8s.io/cluster-bootstrap v0.21.1
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.9.0
-	sigs.k8s.io/cluster-api v0.4.0
-	sigs.k8s.io/cluster-api-provider-openstack v0.4.1-0.20211004105908-1358f6e728e7
-	sigs.k8s.io/controller-runtime v0.9.6
+	sigs.k8s.io/cluster-api v0.4.3
+	sigs.k8s.io/cluster-api-provider-openstack v0.4.1-0.20211011120440-eb83033a0bca
+	sigs.k8s.io/controller-runtime v0.9.7
 	sigs.k8s.io/yaml v1.2.0
 )
 
