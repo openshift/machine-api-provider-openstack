@@ -37,7 +37,7 @@ func TestReconciler(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths: []string{filepath.Join("..", "..", "..", "..", "config", "testcrds")},
+		CRDDirectoryPaths: []string{filepath.Join("..", "..", "config", "testcrds")},
 	}
 	machinev1.AddToScheme(scheme.Scheme)
 
