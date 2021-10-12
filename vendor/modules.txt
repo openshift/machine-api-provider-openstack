@@ -203,15 +203,11 @@ github.com/onsi/ginkgo/reporters/stenographer
 github.com/onsi/ginkgo/reporters/stenographer/support/go-colorable
 github.com/onsi/ginkgo/reporters/stenographer/support/go-isatty
 github.com/onsi/ginkgo/types
-# github.com/onsi/gomega v1.14.0
+# github.com/onsi/gomega v1.15.0
 ## explicit
 github.com/onsi/gomega
 github.com/onsi/gomega/format
-github.com/onsi/gomega/internal/assertion
-github.com/onsi/gomega/internal/asyncassertion
-github.com/onsi/gomega/internal/defaults
-github.com/onsi/gomega/internal/oraclematcher
-github.com/onsi/gomega/internal/testingtsupport
+github.com/onsi/gomega/internal
 github.com/onsi/gomega/matchers
 github.com/onsi/gomega/matchers/support/goraph/bipartitegraph
 github.com/onsi/gomega/matchers/support/goraph/edge
@@ -300,7 +296,7 @@ golang.org/x/net/idna
 # golang.org/x/oauth2 v0.0.0-20210622215436-a8dc77f794b6
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c
+# golang.org/x/sys v0.0.0-20210817190340-bfb29a6856f2
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
@@ -667,7 +663,7 @@ k8s.io/utils/exec
 k8s.io/utils/integer
 k8s.io/utils/pointer
 k8s.io/utils/trace
-# sigs.k8s.io/cluster-api v0.4.0 => sigs.k8s.io/cluster-api v0.4.0-beta.1
+# sigs.k8s.io/cluster-api v0.4.3 => sigs.k8s.io/cluster-api v0.4.0-beta.1
 ## explicit
 sigs.k8s.io/cluster-api/api/v1alpha4
 sigs.k8s.io/cluster-api/errors
@@ -677,7 +673,7 @@ sigs.k8s.io/cluster-api/util/version
 sigs.k8s.io/cluster-api-provider-aws/pkg/apis/awsprovider/v1beta1
 # sigs.k8s.io/cluster-api-provider-azure v0.0.0-00010101000000-000000000000 => github.com/openshift/cluster-api-provider-azure v0.1.0-alpha.3.0.20210505133115-b2eda16dd665
 sigs.k8s.io/cluster-api-provider-azure/pkg/apis/azureprovider/v1beta1
-# sigs.k8s.io/cluster-api-provider-openstack v0.4.1-0.20211004105908-1358f6e728e7
+# sigs.k8s.io/cluster-api-provider-openstack v0.4.1-0.20211011120440-eb83033a0bca
 ## explicit
 sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha4
 sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute
@@ -687,7 +683,7 @@ sigs.k8s.io/cluster-api-provider-openstack/pkg/metrics
 sigs.k8s.io/cluster-api-provider-openstack/pkg/record
 sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/errors
 sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/names
-# sigs.k8s.io/controller-runtime v0.9.6
+# sigs.k8s.io/controller-runtime v0.9.7
 ## explicit
 sigs.k8s.io/controller-runtime
 sigs.k8s.io/controller-runtime/pkg/builder
