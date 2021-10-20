@@ -1,8 +1,16 @@
 package v1alpha1
 
 import (
+	"fmt"
+
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
+
+	v1 "github.com/openshift/api/config/v1"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha4"
+	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
 )
 
 func (cps OpenstackClusterProviderSpec) toClusterSpec() infrav1.OpenStackClusterSpec {
@@ -51,14 +59,13 @@ func NewOpenStackCluster(providerSpec OpenstackClusterProviderSpec, providerStat
 	}
 }
 
-func (ps OpenstackProviderSpec) toMachineSpec() infrav1.OpenStackMachineSpec {
+func (ps OpenstackProviderSpec) toMachineSpec(networkService *networking.Service, clusterInfra *v1.Infrastructure) infrav1.OpenStackMachineSpec {
 	machineSpec := infrav1.OpenStackMachineSpec{
 		CloudName:      ps.CloudName,
 		Flavor:         ps.Flavor,
 		Image:          ps.Image,
 		SSHKeyName:     ps.KeyName,
-		Networks:       make([]infrav1.NetworkParam, len(ps.Networks)),
-		Ports:          make([]infrav1.PortOpts, len(ps.Ports)),
+		Ports:          []infrav1.PortOpts{},
 		FloatingIP:     ps.FloatingIP,
 		SecurityGroups: make([]infrav1.SecurityGroupParam, len(ps.SecurityGroups)),
 		Trunk:          ps.Trunk,
@@ -91,8 +98,8 @@ func (ps OpenstackProviderSpec) toMachineSpec() infrav1.OpenStackMachineSpec {
 	}
 
 	// TODO: close upstream/downstream feature gap: port security
-	for i, port := range ps.Ports {
-		machineSpec.Ports[i] = infrav1.PortOpts{
+	for _, port := range ps.Ports {
+		portOpt := infrav1.PortOpts{
 			NetworkID:           port.NetworkID,
 			NameSuffix:          port.NameSuffix,
 			Description:         port.Description,
@@ -108,34 +115,113 @@ func (ps OpenstackProviderSpec) toMachineSpec() infrav1.OpenStackMachineSpec {
 		}
 
 		for fixedIPindex, fixedIP := range port.FixedIPs {
-			machineSpec.Ports[i].FixedIPs[fixedIPindex] = infrav1.FixedIP(fixedIP)
+			portOpt.FixedIPs[fixedIPindex] = infrav1.FixedIP(fixedIP)
 		}
 
 		for addrPairIndex, addrPair := range port.AllowedAddressPairs {
-			machineSpec.Ports[i].AllowedAddressPairs[addrPairIndex] = infrav1.AddressPair(addrPair)
+			portOpt.AllowedAddressPairs[addrPairIndex] = infrav1.AddressPair(addrPair)
 		}
+
+		machineSpec.Ports = append(machineSpec.Ports, portOpt)
 	}
 
 	// TODO: close upstream/downstream feature gap or depricate feature in favor of ports interface: port tags, port security
-	for i, network := range ps.Networks {
-		machineSpec.Networks[i] = infrav1.NetworkParam{
-			UUID:    network.UUID,
-			FixedIP: network.FixedIp,
-			Filter:  infrav1.Filter(network.Filter),
-			Subnets: make([]infrav1.SubnetParam, len(network.Subnets)),
+	for _, network := range ps.Networks {
+		ports, err := network.toInfrav1Port(networkService, clusterInfra)
+		if err != nil {
+			panic(err)
 		}
-		for subnetIndex, subnet := range network.Subnets {
-			machineSpec.Networks[i].Subnets[subnetIndex] = infrav1.SubnetParam{
-				UUID:   subnet.UUID,
-				Filter: infrav1.SubnetFilter(subnet.Filter),
-			}
+
+		if ports != nil {
+			machineSpec.Ports = append(machineSpec.Ports, ports...)
 		}
 	}
 
 	return machineSpec
 }
 
-func NewOpenStackMachine(machine *machinev1.Machine) (*infrav1.OpenStackMachine, error) {
+// TODO(egarcia): this is an inefficient mess, fix upstream and remove as soon as possible
+func (networkParam *NetworkParam) toInfrav1Port(networkService *networking.Service, clusterInfra *v1.Infrastructure) ([]infrav1.PortOpts, error) {
+	allowedAddressPairs := []infrav1.AddressPair{}
+	if !networkParam.NoAllowedAddressPairs {
+		allowedAddressPairs = []infrav1.AddressPair{
+			{IPAddress: clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIP},
+			{IPAddress: clusterInfra.Status.PlatformStatus.OpenStack.NodeDNSIP},
+			{IPAddress: clusterInfra.Status.PlatformStatus.OpenStack.IngressIP},
+		}
+	}
+
+	netOpts := networks.ListOpts(networkParam.Filter)
+	netOpts.ID = networkParam.UUID
+	networkList, err := networkService.GetNetworksByFilter(netOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch network when converting to port: %v", err)
+	}
+
+	networkIDs := map[string]*infrav1.PortOpts{}
+	for _, network := range networkList {
+		networkIDs[network.ID] = &infrav1.PortOpts{
+			NetworkID:           network.ID,
+			NameSuffix:          utilrand.String(6),
+			VNICType:            networkParam.VNICType,
+			AllowedAddressPairs: allowedAddressPairs,
+		}
+
+		port := networkIDs[network.ID]
+
+		// Set Port Security
+		if networkParam.PortSecurity != nil {
+			//TODO(egarcia): there has to be a better way to do this :(
+			flag := *networkParam.PortSecurity
+			flag = !flag
+			port.DisablePortSecurity = &flag
+		}
+
+		port.FixedIPs = append(port.FixedIPs, infrav1.FixedIP{
+			IPAddress: networkParam.FixedIp,
+		})
+	}
+
+	for _, subnetParam := range networkParam.Subnets {
+		subnetOpts := subnets.ListOpts(subnetParam.Filter)
+		subnetOpts.ID = subnetParam.UUID
+		subnetOpts.NetworkID = networkParam.UUID
+		subnetList, err := networkService.GetSubnetsByFilter(subnetOpts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch subnet when converting to port: %v", err)
+		}
+
+		for _, subnet := range subnetList {
+			port, ok := networkIDs[subnet.NetworkID]
+			if ok {
+				port.FixedIPs = append(port.FixedIPs, infrav1.FixedIP{
+					SubnetID: subnet.ID,
+				})
+				var portSecurity *bool
+				if subnetParam.PortSecurity != nil {
+					portSecurity = subnetParam.PortSecurity
+				} else if networkParam.PortSecurity != nil {
+					portSecurity = subnetParam.PortSecurity
+				}
+				if portSecurity != nil {
+					flag := *portSecurity
+					flag = !flag
+					port.DisablePortSecurity = &flag
+				}
+			} else {
+				return nil, fmt.Errorf("networkParam for network %s contains subnet %s that is not part of network")
+			}
+		}
+	}
+
+	portOptsList := []infrav1.PortOpts{}
+	for _, value := range networkIDs {
+		portOptsList = append(portOptsList, *value)
+	}
+	return portOptsList, nil
+}
+
+func NewOpenStackMachine(machine *machinev1.Machine, networkService *networking.Service, clusterInfra *v1.Infrastructure) (*infrav1.OpenStackMachine, error) {
 	providerSpec, err := MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return nil, err
@@ -143,7 +229,7 @@ func NewOpenStackMachine(machine *machinev1.Machine) (*infrav1.OpenStackMachine,
 
 	osMachine := &infrav1.OpenStackMachine{
 		ObjectMeta: machine.ObjectMeta,
-		Spec:       providerSpec.toMachineSpec(),
+		Spec:       providerSpec.toMachineSpec(networkService, clusterInfra),
 	}
 
 	// if machine api master label exists, add v1beta control plane label to the node
