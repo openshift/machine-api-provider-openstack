@@ -1,7 +1,7 @@
 package v1alpha1
 
 import (
-	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
+	machinev1 "github.com/openshift/api/machine/v1beta1"
 	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha4"
 )
 

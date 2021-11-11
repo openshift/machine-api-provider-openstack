@@ -28,7 +28,7 @@ import (
 	azutils "github.com/gophercloud/utils/openstack/compute/v2/availabilityzones"
 	flavorutils "github.com/gophercloud/utils/openstack/compute/v2/flavors"
 	imageutils "github.com/gophercloud/utils/openstack/imageservice/v2/images"
-	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
+	machinev1 "github.com/openshift/api/machine/v1beta1"
 )
 
 type InstanceService struct {
