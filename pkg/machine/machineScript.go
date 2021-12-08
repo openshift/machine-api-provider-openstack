@@ -23,8 +23,8 @@ import (
 	"fmt"
 	"text/template"
 
-	openstackconfigv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
-	"shiftstack/machine-api-provider-openstack/pkg/bootstrap"
+	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
+	"github.com/openshift/machine-api-provider-openstack/pkg/bootstrap"
 
 	clconfig "github.com/coreos/container-linux-config-transpiler/config"
 	machinev1 "github.com/openshift/api/machine/v1beta1"
