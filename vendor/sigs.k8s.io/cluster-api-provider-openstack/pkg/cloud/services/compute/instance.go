@@ -22,7 +22,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/attachinterfaces"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/bootfromvolume"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/schedulerhints"
@@ -31,24 +30,26 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
-	"github.com/gophercloud/utils/openstack/compute/v2/flavors"
 	"k8s.io/apimachinery/pkg/runtime"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util"
 
-	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha4"
-	"sigs.k8s.io/cluster-api-provider-openstack/pkg/metrics"
+	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
 	capoerrors "sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/errors"
 )
 
 const (
-	timeoutInstanceCreate       = 5
 	retryIntervalInstanceStatus = 10 * time.Second
+	timeoutInstanceCreate       = 5
 	timeoutInstanceDelete       = 5 * time.Minute
 )
 
 func (s *Service) CreateInstance(openStackCluster *infrav1.OpenStackCluster, machine *clusterv1.Machine, openStackMachine *infrav1.OpenStackMachine, clusterName string, userData string) (instance *InstanceStatus, err error) {
+	return s.createInstanceImpl(openStackCluster, machine, openStackMachine, clusterName, userData, retryIntervalInstanceStatus)
+}
+
+func (s *Service) createInstanceImpl(openStackCluster *infrav1.OpenStackCluster, machine *clusterv1.Machine, openStackMachine *infrav1.OpenStackMachine, clusterName string, userData string, retryInterval time.Duration) (instance *InstanceStatus, err error) {
 	if openStackMachine == nil {
 		return nil, fmt.Errorf("create Options need be specified to create instace")
 	}
@@ -71,17 +72,17 @@ func (s *Service) CreateInstance(openStackCluster *infrav1.OpenStackCluster, mac
 		ServerGroupID: openStackMachine.Spec.ServerGroupID,
 	}
 
+	// verify that trunk is supported if set at instance level.
 	if openStackMachine.Spec.Trunk {
-		trunkSupport, err := s.networkingService.GetTrunkSupport()
+		trunkSupported, err := s.isTrunkExtSupported()
 		if err != nil {
-			return nil, fmt.Errorf("there was an issue verifying whether trunk support is available, please disable it: %v", err)
+			return nil, err
 		}
-		if !trunkSupport {
-			return nil, fmt.Errorf("there is no trunk support. Please disable it")
+		if !trunkSupported {
+			return nil, fmt.Errorf("there is no trunk support. please ensure that the trunk extension is enabled in your OpenStack deployment")
 		}
-		instanceSpec.Trunk = trunkSupport
+		instanceSpec.Trunk = true
 	}
-
 	machineTags := []string{}
 
 	// Append machine specific tags
@@ -113,9 +114,20 @@ func (s *Service) CreateInstance(openStackCluster *infrav1.OpenStackCluster, mac
 	if err != nil {
 		return nil, err
 	}
+
+	trunkConfigured := s.isTrunkConfigured(nets, instanceSpec.Trunk)
+	if trunkConfigured {
+		trunkSupported, err := s.isTrunkExtSupported()
+		if err != nil {
+			return nil, err
+		}
+		if !trunkSupported {
+			return nil, fmt.Errorf("there is no trunk support. please ensure that the trunk extension is enabled in your OpenStack deployment")
+		}
+	}
 	instanceSpec.Networks = nets
 
-	return s.createInstance(openStackMachine, clusterName, &instanceSpec)
+	return s.createInstance(openStackMachine, clusterName, &instanceSpec, retryInterval)
 }
 
 // constructNetworks builds an array of networks from the network, subnet and ports items in the machine spec.
@@ -166,9 +178,21 @@ func (s *Service) constructNetworks(openStackCluster *infrav1.OpenStackCluster, 
 	return nets, nil
 }
 
-func (s *Service) createInstance(eventObject runtime.Object, clusterName string, instanceSpec *InstanceSpec) (*InstanceStatus, error) {
+func (s *Service) createInstance(eventObject runtime.Object, clusterName string, instanceSpec *InstanceSpec, retryInterval time.Duration) (*InstanceStatus, error) {
+	var server *ServerExt
 	accessIPv4 := ""
 	portList := []servers.Network{}
+
+	// Ensure we delete the ports we created if we haven't created the server.
+	defer func() {
+		if server != nil {
+			return
+		}
+
+		if err := s.deletePorts(eventObject, portList); err != nil {
+			s.logger.V(4).Error(err, "failed to clean up ports after failure", "cluster", clusterName, "machine", instanceSpec.Name)
+		}
+	}()
 
 	for i, network := range instanceSpec.Networks {
 		if network.ID == "" {
@@ -196,9 +220,6 @@ func (s *Service) createInstance(eventObject runtime.Object, clusterName string,
 	}
 
 	if instanceSpec.Subnet != "" && accessIPv4 == "" {
-		if err := s.deletePorts(eventObject, portList); err != nil {
-			return nil, err
-		}
 		return nil, fmt.Errorf("no ports with fixed IPs found on Subnet %q", instanceSpec.Subnet)
 	}
 
@@ -207,7 +228,7 @@ func (s *Service) createInstance(eventObject runtime.Object, clusterName string,
 		return nil, fmt.Errorf("create new server: %v", err)
 	}
 
-	flavorID, err := flavors.IDFromName(s.computeClient, instanceSpec.Flavor)
+	flavorID, err := s.computeService.GetFlavorIDFromName(instanceSpec.Flavor)
 	if err != nil {
 		return nil, fmt.Errorf("error getting flavor id from flavor name %s: %v", instanceSpec.Flavor, err)
 	}
@@ -230,24 +251,18 @@ func (s *Service) createInstance(eventObject runtime.Object, clusterName string,
 
 	serverCreateOpts = applyServerGroupID(serverCreateOpts, instanceSpec.ServerGroupID)
 
-	mc := metrics.NewMetricPrometheusContext("server", "create")
-
-	server, err := servers.Create(s.computeClient, keypairs.CreateOptsExt{
+	server, err = s.computeService.CreateServer(keypairs.CreateOptsExt{
 		CreateOptsBuilder: serverCreateOpts,
 		KeyName:           instanceSpec.SSHKeyName,
-	}).Extract()
-
-	if mc.ObserveRequest(err) != nil {
-		serverErr := err
-		if err = s.deletePorts(eventObject, portList); err != nil {
-			return nil, fmt.Errorf("error creating OpenStack instance: %v, error deleting ports: %v", serverErr, err)
-		}
-		return nil, fmt.Errorf("error creating Openstack instance: %v", serverErr)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error creating Openstack instance: %v", err)
 	}
+
 	instanceCreateTimeout := getTimeout("CLUSTER_API_OPENSTACK_INSTANCE_CREATE_TIMEOUT", timeoutInstanceCreate)
 	instanceCreateTimeout *= time.Minute
 	var createdInstance *InstanceStatus
-	err = util.PollImmediate(retryIntervalInstanceStatus, instanceCreateTimeout, func() (bool, error) {
+	err = util.PollImmediate(retryInterval, instanceCreateTimeout, func() (bool, error) {
 		createdInstance, err = s.GetInstanceStatus(server.ID)
 		if err != nil {
 			if capoerrors.IsRetryable(err) {
@@ -393,14 +408,7 @@ func (s *Service) getImageID(imageName string) (string, error) {
 	opts := images.ListOpts{
 		Name: imageName,
 	}
-
-	mc := metrics.NewMetricPrometheusContext("image", "list")
-	pages, err := images.List(s.imagesClient, opts).AllPages()
-	if mc.ObserveRequest(err) != nil {
-		return "", err
-	}
-
-	allImages, err := images.ExtractImages(pages)
+	allImages, err := s.computeService.ListImages(opts)
 	if err != nil {
 		return "", err
 	}
@@ -433,33 +441,27 @@ func (s *Service) GetManagementPort(openStackCluster *infrav1.OpenStackCluster, 
 }
 
 func (s *Service) DeleteInstance(eventObject runtime.Object, instance *InstanceStatus) error {
-	mc := metrics.NewMetricPrometheusContext("server_os_interface", "list")
-	instanceIdentifier := instance.InstanceIdentifier()
-	allInterfaces, err := attachinterfaces.List(s.computeClient, instanceIdentifier.ID).AllPages()
-	if mc.ObserveRequest(err) != nil {
-		return err
-	}
-	instanceInterfaces, err := attachinterfaces.ExtractInterfaces(allInterfaces)
+	instanceInterfaces, err := s.computeService.ListAttachedInterfaces(instance.ID())
 	if err != nil {
 		return err
 	}
 
-	trunkSupport, err := s.networkingService.GetTrunkSupport()
+	trunkSupported, err := s.isTrunkExtSupported()
 	if err != nil {
 		return fmt.Errorf("obtaining network extensions: %v", err)
 	}
+
 	// get and delete trunks
 	for _, port := range instanceInterfaces {
-		if err = s.deleteAttachInterface(eventObject, instanceIdentifier, port.PortID); err != nil {
+		if err = s.deleteAttachInterface(eventObject, instance.InstanceIdentifier(), port.PortID); err != nil {
 			return err
 		}
 
-		if trunkSupport {
+		if trunkSupported {
 			if err = s.networkingService.DeleteTrunk(eventObject, port.PortID); err != nil {
 				return err
 			}
 		}
-
 		if err = s.networkingService.DeletePort(eventObject, port.PortID); err != nil {
 			return err
 		}
@@ -472,7 +474,7 @@ func (s *Service) DeleteInstance(eventObject runtime.Object, instance *InstanceS
 		}
 	}
 
-	return s.deleteInstance(eventObject, instanceIdentifier)
+	return s.deleteInstance(eventObject, instance.InstanceIdentifier())
 }
 
 func (s *Service) deletePorts(eventObject runtime.Object, nets []servers.Network) error {
@@ -485,9 +487,8 @@ func (s *Service) deletePorts(eventObject runtime.Object, nets []servers.Network
 }
 
 func (s *Service) deleteAttachInterface(eventObject runtime.Object, instance *InstanceIdentifier, portID string) error {
-	mc := metrics.NewMetricPrometheusContext("server_os_interface", "delete")
-	err := attachinterfaces.Delete(s.computeClient, instance.ID, portID).ExtractErr()
-	if mc.ObserveRequestIgnoreNotFoundorConflict(err) != nil {
+	err := s.computeService.DeleteAttachedInterface(instance.ID, portID)
+	if err != nil {
 		if capoerrors.IsNotFound(err) {
 			record.Eventf(eventObject, "SuccessfulDeleteAttachInterface", "Attach interface did not exist: instance %s, port %s", instance.ID, portID)
 			return nil
@@ -506,9 +507,8 @@ func (s *Service) deleteAttachInterface(eventObject runtime.Object, instance *In
 }
 
 func (s *Service) deleteInstance(eventObject runtime.Object, instance *InstanceIdentifier) error {
-	mc := metrics.NewMetricPrometheusContext("server", "delete")
-	err := servers.Delete(s.computeClient, instance.ID).ExtractErr()
-	if mc.ObserveRequestIgnoreNotFound(err) != nil {
+	err := s.computeService.DeleteServer(instance.ID)
+	if err != nil {
 		if capoerrors.IsNotFound(err) {
 			record.Eventf(eventObject, "SuccessfulDeleteServer", "Server %s with id %s did not exist", instance.Name, instance.ID)
 			return nil
@@ -541,17 +541,15 @@ func (s *Service) GetInstanceStatus(resourceID string) (instance *InstanceStatus
 		return nil, fmt.Errorf("resourceId should be specified to get detail")
 	}
 
-	mc := metrics.NewMetricPrometheusContext("server", "get")
-	var server ServerExt
-	err = servers.Get(s.computeClient, resourceID).ExtractInto(&server)
-	if mc.ObserveRequestIgnoreNotFound(err) != nil {
+	server, err := s.computeService.GetServer(resourceID)
+	if err != nil {
 		if capoerrors.IsNotFound(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get server %q detail failed: %v", resourceID, err)
 	}
 
-	return &InstanceStatus{&server, s.logger}, nil
+	return &InstanceStatus{server, s.logger}, nil
 }
 
 func (s *Service) GetInstanceStatusByName(eventObject runtime.Object, name string) (instance *InstanceStatus, err error) {
@@ -567,15 +565,9 @@ func (s *Service) GetInstanceStatusByName(eventObject runtime.Object, name strin
 		listOpts = servers.ListOpts{}
 	}
 
-	mc := metrics.NewMetricPrometheusContext("server", "list")
-	allPages, err := servers.List(s.computeClient, listOpts).AllPages()
-	if mc.ObserveRequest(err) != nil {
-		return nil, fmt.Errorf("get server list: %v", err)
-	}
-	var serverList []ServerExt
-	err = servers.ExtractServersInto(allPages, &serverList)
+	serverList, err := s.computeService.ListServers(listOpts)
 	if err != nil {
-		return nil, fmt.Errorf("extract server list: %v", err)
+		return nil, fmt.Errorf("get server list: %v", err)
 	}
 
 	if len(serverList) > 1 {
@@ -614,4 +606,32 @@ func getTimeout(name string, timeout int) time.Duration {
 		}
 	}
 	return time.Duration(timeout)
+}
+
+// isTrunkExtSupported verifies trunk setup on the OpenStack deployment.
+func (s *Service) isTrunkExtSupported() (trunknSupported bool, err error) {
+	trunkSupport, err := s.networkingService.GetTrunkSupport()
+	if err != nil {
+		return false, fmt.Errorf("there was an issue verifying whether trunk support is available, Please try again later: %v", err)
+	}
+	if !trunkSupport {
+		return false, nil
+	}
+	return true, nil
+}
+
+// isTrunkConfigured verifies trunk configuration at instance and port levels, useful for avoiding multple api calls to verify trunk support.
+func (s *Service) isTrunkConfigured(nets []infrav1.Network, instanceLevelTrunk bool) bool {
+	if instanceLevelTrunk {
+		return true
+	}
+	for _, net := range nets {
+		port := net.PortOpts
+		if port != nil {
+			if port.Trunk != nil && *port.Trunk {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -89,7 +89,6 @@ type OpenStackMachineSpec struct {
 
 	// IdentityRef is a reference to a identity to be used when reconciling this cluster
 	// +optional
-	// +k8s:conversion-gen=false
 	IdentityRef *OpenStackIdentityReference `json:"identityRef,omitempty"`
 }
 
@@ -131,7 +130,6 @@ type OpenStackMachineStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:path=openstackmachines,scope=Namespaced,categories=cluster-api,shortName=osm
-// +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Cluster",type="string",JSONPath=".metadata.labels.cluster\\.x-k8s\\.io/cluster-name",description="Cluster to which this OpenStackMachine belongs"
 // +kubebuilder:printcolumn:name="InstanceState",type="string",JSONPath=".status.instanceState",description="OpenStack instance state"
