@@ -21,8 +21,8 @@ limitations under the License.
 package apis
 
 import (
-	"k8s.io/apimachinery/pkg/runtime"
 	"github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // AddToSchemes may be used to add all resources defined in the project to a Scheme
