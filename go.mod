@@ -1,4 +1,4 @@
-module shiftstack/machine-api-provider-openstack
+module github.com/openshift/machine-api-provider-openstack
 
 go 1.15
 

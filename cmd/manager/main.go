@@ -22,9 +22,9 @@ import (
 	"os"
 	"time"
 
-	"shiftstack/machine-api-provider-openstack/pkg/apis"
-	"shiftstack/machine-api-provider-openstack/pkg/machine"
-	"shiftstack/machine-api-provider-openstack/pkg/machineset"
+	"github.com/openshift/machine-api-provider-openstack/pkg/apis"
+	"github.com/openshift/machine-api-provider-openstack/pkg/machine"
+	"github.com/openshift/machine-api-provider-openstack/pkg/machineset"
 
 	configv1 "github.com/openshift/api/config/v1"
 	machinev1 "github.com/openshift/api/machine/v1beta1"

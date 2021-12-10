@@ -13,7 +13,7 @@ import (
 	machinev1 "github.com/openshift/api/machine/v1beta1"
 	"gopkg.in/yaml.v2"
 
-	openstackconfigv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
+	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	machineproviderv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
+	machineproviderv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	. "github.com/onsi/ginkgo"

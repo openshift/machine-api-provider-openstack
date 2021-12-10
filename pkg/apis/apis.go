@@ -22,7 +22,7 @@ package apis
 
 import (
 	"k8s.io/apimachinery/pkg/runtime"
-	"shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
+	"github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 )
 
 // AddToSchemes may be used to add all resources defined in the project to a Scheme
