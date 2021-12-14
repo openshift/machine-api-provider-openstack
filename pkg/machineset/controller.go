@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	openstackconfigv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
-	"shiftstack/machine-api-provider-openstack/pkg/clients"
+	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
+	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 
 	"github.com/go-logr/logr"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"

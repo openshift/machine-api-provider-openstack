@@ -40,11 +40,11 @@ func clientOptsForCloud(cloud *clientconfig.Cloud) *clientconfig.ClientOpts {
 }
 
 func (osc *openStackContext) getComputeService() (*compute.Service, error) {
-	return compute.NewService(osc.provider, clientOptsForCloud(osc.cloud), ctrl.Log)
+	return compute.NewService(osc.provider, clientOptsForCloud(osc.cloud), ctrl.Log.WithName("capo-compute"))
 }
 
 func (osc *openStackContext) getNetworkService() (*networking.Service, error) {
-	return networking.NewService(osc.provider, clientOptsForCloud(osc.cloud), ctrl.Log)
+	return networking.NewService(osc.provider, clientOptsForCloud(osc.cloud), ctrl.Log.WithName("capo-network"))
 }
 
 func getClusterNameWithNamespace(machine *machinev1.Machine) string {

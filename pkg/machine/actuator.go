@@ -24,12 +24,12 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 
-	"sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha4"
+	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
-	openstackconfigv1 "shiftstack/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
-	"shiftstack/machine-api-provider-openstack/pkg/clients"
+	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
+	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 
 	machinev1 "github.com/openshift/api/machine/v1beta1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
@@ -88,7 +88,7 @@ func (oc *OpenstackClient) getOpenStackContext(machine *machinev1.Machine) (*ope
 	return &openStackContext{provider, &cloud}, nil
 }
 
-func getOSCluster() v1alpha4.OpenStackCluster {
+func getOSCluster() capov1.OpenStackCluster {
 	// TODO(egarcia): if we ever use the cluster object, this will benifit from reading from it
 	var clusterSpec openstackconfigv1.OpenstackClusterProviderSpec
 
@@ -144,7 +144,7 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 		return oc.handleMachineError(machine, maoMachine.CreateMachine("error creating bootstrap for %s: %v", machine.Name, err), createEventAction)
 	}
 
-	// Convert to v1alpha4
+	// Convert to capov1
 	osMachine, err := openstackconfigv1.NewOpenStackMachine(machine)
 	if err != nil {
 		return err
@@ -266,7 +266,7 @@ func (oc *OpenstackClient) Update(ctx context.Context, machine *machinev1.Machin
 	return nil
 }
 
-func (oc *OpenstackClient) updateMachine(ctx context.Context, machine *machinev1.Machine, osc *openStackContext, providerSpec *openstackconfigv1.OpenstackProviderSpec, instanceStatus *compute.InstanceStatus, osCluster *v1alpha4.OpenStackCluster) error {
+func (oc *OpenstackClient) updateMachine(ctx context.Context, machine *machinev1.Machine, osc *openStackContext, providerSpec *openstackconfigv1.OpenstackProviderSpec, instanceStatus *compute.InstanceStatus, osCluster *capov1.OpenStackCluster) error {
 	if providerSpec.FloatingIP != "" {
 		networkStatus, err := instanceStatus.NetworkStatus()
 		if err != nil {
