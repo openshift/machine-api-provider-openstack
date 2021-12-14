@@ -51,7 +51,80 @@ func NewOpenStackCluster(providerSpec OpenstackClusterProviderSpec, providerStat
 	}
 }
 
-func (ps OpenstackProviderSpec) toMachineSpec() capov1.OpenStackMachineSpec {
+// Converts NetworkParams to capov1 portOpts
+func (net NetworkParam) toCapov1PortOpt(apiVIP, ingressVIP string, trunk *bool) capov1.PortOpts {
+	network := capov1.NetworkFilter{
+		ID:          net.UUID,
+		Name:        net.Filter.Name,
+		Description: net.Filter.Description,
+		ProjectID:   net.Filter.ProjectID,
+		Tags:        net.Filter.Tags,
+		TagsAny:     net.Filter.TagsAny,
+		NotTags:     net.Filter.NotTags,
+		NotTagsAny:  net.Filter.NotTagsAny,
+	}
+	if network.ID == "" {
+		network.ID = net.Filter.ID
+	}
+
+	fixedIPs := make([]capov1.FixedIP, len(net.Subnets))
+	for i, subnet := range net.Subnets {
+		id := subnet.UUID
+		if id == "" {
+			id = subnet.Filter.ID
+		}
+
+		fixedIPs[i] = capov1.FixedIP{
+			Subnet: &capov1.SubnetFilter{
+				Name:            subnet.Filter.Name,
+				Description:     subnet.Filter.Description,
+				ProjectID:       subnet.Filter.ProjectID,
+				IPVersion:       subnet.Filter.IPVersion,
+				GatewayIP:       subnet.Filter.GatewayIP,
+				CIDR:            subnet.Filter.CIDR,
+				IPv6AddressMode: subnet.Filter.IPv6AddressMode,
+				IPv6RAMode:      subnet.Filter.IPv6RAMode,
+				ID:              id,
+				Tags:            subnet.Filter.Tags,
+				TagsAny:         subnet.Filter.TagsAny,
+				NotTags:         subnet.Filter.NotTags,
+				NotTagsAny:      subnet.Filter.NotTagsAny,
+			},
+		}
+	}
+
+	addressPairs := []capov1.AddressPair{}
+	if !net.NoAllowedAddressPairs {
+		addressPairs = []capov1.AddressPair{
+			{
+				IPAddress: apiVIP,
+			},
+			{
+				IPAddress: ingressVIP,
+			},
+		}
+	}
+
+	portSecurity := net.PortSecurity
+	if net.PortSecurity != nil {
+		ps := *portSecurity
+		ps = !ps
+		portSecurity = &ps
+	}
+
+	port := capov1.PortOpts{
+		Network:             &network,
+		AllowedAddressPairs: addressPairs,
+		Trunk:               trunk,
+		DisablePortSecurity: portSecurity,
+		VNICType:            net.VNICType,
+		FixedIPs:            fixedIPs,
+		Tags:                net.PortTags,
+	}
+	return port
+}
+
+func (ps OpenstackProviderSpec) toMachineSpec(apiVIP, ingressVIP string) capov1.OpenStackMachineSpec {
 	machineSpec := capov1.OpenStackMachineSpec{
 		CloudName:      ps.CloudName,
 		Flavor:         ps.Flavor,
@@ -90,10 +163,9 @@ func (ps OpenstackProviderSpec) toMachineSpec() capov1.OpenStackMachineSpec {
 		}
 	}
 
-	// TODO: close upstream/downstream feature gap: port security
 	for i, port := range ps.Ports {
 		machineSpec.Ports[i] = capov1.PortOpts{
-			NetworkID:           port.NetworkID,
+			Network:             &capov1.NetworkFilter{ID: port.NetworkID},
 			NameSuffix:          port.NameSuffix,
 			Description:         port.Description,
 			AdminStateUp:        port.AdminStateUp,
@@ -108,7 +180,10 @@ func (ps OpenstackProviderSpec) toMachineSpec() capov1.OpenStackMachineSpec {
 		}
 
 		for fixedIPindex, fixedIP := range port.FixedIPs {
-			machineSpec.Ports[i].FixedIPs[fixedIPindex] = capov1.FixedIP(fixedIP)
+			machineSpec.Ports[i].FixedIPs[fixedIPindex] = capov1.FixedIP{
+				Subnet:    &capov1.SubnetFilter{ID: fixedIP.SubnetID},
+				IPAddress: fixedIP.IPAddress,
+			}
 		}
 
 		for addrPairIndex, addrPair := range port.AllowedAddressPairs {
@@ -116,26 +191,17 @@ func (ps OpenstackProviderSpec) toMachineSpec() capov1.OpenStackMachineSpec {
 		}
 	}
 
-	// TODO: close upstream/downstream feature gap or depricate feature in favor of ports interface: port tags, port security
+	portList := make([]capov1.PortOpts, len(ps.Networks))
 	for i, network := range ps.Networks {
-		machineSpec.Networks[i] = capov1.NetworkParam{
-			UUID:    network.UUID,
-			FixedIP: network.FixedIp,
-			Filter:  capov1.Filter(network.Filter),
-			Subnets: make([]capov1.SubnetParam, len(network.Subnets)),
-		}
-		for subnetIndex, subnet := range network.Subnets {
-			machineSpec.Networks[i].Subnets[subnetIndex] = capov1.SubnetParam{
-				UUID:   subnet.UUID,
-				Filter: capov1.SubnetFilter(subnet.Filter),
-			}
-		}
+		portList[i] = network.toCapov1PortOpt(apiVIP, ingressVIP, &ps.Trunk)
 	}
+
+	machineSpec.Ports = append(machineSpec.Ports, portList...)
 
 	return machineSpec
 }
 
-func NewOpenStackMachine(machine *machinev1.Machine) (*capov1.OpenStackMachine, error) {
+func NewOpenStackMachine(machine *machinev1.Machine, apiVIP, ingressVIP string) (*capov1.OpenStackMachine, error) {
 	providerSpec, err := MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return nil, err
@@ -143,11 +209,10 @@ func NewOpenStackMachine(machine *machinev1.Machine) (*capov1.OpenStackMachine, 
 
 	osMachine := &capov1.OpenStackMachine{
 		ObjectMeta: machine.ObjectMeta,
-		Spec:       providerSpec.toMachineSpec(),
+		Spec:       providerSpec.toMachineSpec(apiVIP, ingressVIP),
 	}
 
 	// if machine api master label exists, add v1beta control plane label to the node
-	// TODO(egarcia): fix the go mods so that we can track cluster-api@main and import this
 	if osMachine.ObjectMeta.Labels["machine.openshift.io/cluster-api-machine-role"] == "master" {
 		osMachine.ObjectMeta.Labels["cluster.x-k8s.io/control-plane"] = ""
 	}
