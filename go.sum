@@ -1732,8 +1732,8 @@ sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.21/go.mod h1:LEScyz
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.22/go.mod h1:LEScyzhFmoF5pso/YSeBstl57mOzx9xlU9n85RGrDQg=
 sigs.k8s.io/cluster-api v1.0.2 h1:V2pzMUfyVv29vf6q5RVLuPIp8PAcnLYcBcH9bzoMDLY=
 sigs.k8s.io/cluster-api v1.0.2/go.mod h1:/LkJXtsvhxTV4U0z1Y2Y1Gr2xebJ0/ce09Ab2M0XU/U=
-sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20211208064945-172c23f148b0 h1:+haTo0D3bJzbTG0bTA3Hcyv8aNVfMYh186SO7Xyc1eU=
-sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20211208064945-172c23f148b0/go.mod h1:DjUUwFBscjYRihaHOXVMtNlBBazsstagsGO72TrqUik=
+sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20211214023603-b936d98a83d6 h1:Yw23vTEMI9fjxC+rMaYlzP3TImDf7HQb8r3qy0ol4Vg=
+sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20211214023603-b936d98a83d6/go.mod h1:DjUUwFBscjYRihaHOXVMtNlBBazsstagsGO72TrqUik=
 sigs.k8s.io/cluster-api/test v1.0.1-0.20211028151834-d72fd59c8483/go.mod h1:NISRUeCxvEa6qUhVtfWt0t/C9ljTzGT9joft0YeN+3s=
 sigs.k8s.io/controller-runtime v0.9.6/go.mod h1:q6PpkM5vqQubEKUKOM6qr06oXGzOBcCby1DA9FbyZeA=
 sigs.k8s.io/controller-runtime v0.10.3-0.20211011182302-43ea648ec318/go.mod h1:CQp8eyUQZ/Q7PJvnIrB6/hgfTC1kBkGylwsLgOQi1WY=
