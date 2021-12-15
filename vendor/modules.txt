@@ -663,7 +663,6 @@ k8s.io/utils/pointer
 k8s.io/utils/trace
 # sigs.k8s.io/cluster-api v1.0.2 => sigs.k8s.io/cluster-api v1.0.2
 ## explicit
-sigs.k8s.io/cluster-api/api/v1alpha4
 sigs.k8s.io/cluster-api/api/v1beta1
 sigs.k8s.io/cluster-api/errors
 sigs.k8s.io/cluster-api/feature
@@ -671,7 +670,6 @@ sigs.k8s.io/cluster-api/util
 sigs.k8s.io/cluster-api/util/version
 # sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20211208064945-172c23f148b0
 ## explicit
-sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha4
 sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1
 sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute
 sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking
