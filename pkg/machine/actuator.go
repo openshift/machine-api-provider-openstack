@@ -150,11 +150,17 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 		return fmt.Errorf("Failed to retrieve cluster Infrastructure object: %v", err)
 	}
 
+	networkService, err := osc.getNetworkService()
+	if err != nil {
+		return err
+	}
+
 	// Convert to capov1
 	osMachine, err := openstackconfigv1.NewOpenStackMachine(
 		machine,
 		clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIP,
 		clusterInfra.Status.PlatformStatus.OpenStack.IngressIP,
+		networkService,
 	)
 	if err != nil {
 		return err
