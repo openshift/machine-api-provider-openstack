@@ -11,8 +11,8 @@ require (
 	github.com/go-logr/logr v0.4.0
 	github.com/gophercloud/gophercloud v0.16.0
 	github.com/gophercloud/utils v0.0.0-20210323225332-7b186010c04f
-	github.com/onsi/ginkgo v1.16.4
-	github.com/onsi/gomega v1.16.0
+	github.com/onsi/ginkgo v1.16.5
+	github.com/onsi/gomega v1.17.0
 	github.com/openshift/api v0.0.0-20211108165917-be1be0e89115
 	github.com/openshift/client-go v0.0.0-20211025111749-96ca2abfc56c
 	github.com/openshift/machine-api-operator v0.2.1-0.20211111133920-c8bba3e64310
