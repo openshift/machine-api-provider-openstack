@@ -55,6 +55,7 @@ func NewOpenStackCluster(providerSpec OpenstackClusterProviderSpec, providerStat
 	}
 }
 
+// Looks up a subnet in openstack and gets the ID of the network its attached to
 func (filter SubnetFilter) getNetworkID(networkService *networking.Service) (string, error) {
 	listOpts := subnets.ListOpts(filter)
 	subnets, err := networkService.GetSubnetsByFilter(listOpts)
@@ -83,11 +84,15 @@ func (net NetworkParam) toCapov1PortOpt(apiVIP, ingressVIP string, trunk *bool, 
 		}
 	}
 
-	portSecurity := net.PortSecurity
+	// Flip the value of port security if not nil
+	// must preserve 3 use cases:
+	//   nil: openstack default
+	//   true: set explicitly to true
+	//   false: set explicitly to false
+	disablePortSecurity := net.PortSecurity
 	if net.PortSecurity != nil {
-		ps := *portSecurity
-		ps = !ps
-		portSecurity = &ps
+		ps := !*disablePortSecurity
+		disablePortSecurity = &ps
 	}
 
 	network := capov1.NetworkFilter{
@@ -145,16 +150,18 @@ func (net NetworkParam) toCapov1PortOpt(apiVIP, ingressVIP string, trunk *bool, 
 				Network:             &network,
 				AllowedAddressPairs: addressPairs,
 				Trunk:               trunk,
-				DisablePortSecurity: portSecurity,
+				DisablePortSecurity: disablePortSecurity,
 				VNICType:            net.VNICType,
 				FixedIPs:            fixedIP,
 				Tags:                portTags,
 			}
 
 			// Fetch the UUID of the network subnet is attached to or the conversion will fail
+			// NOTE: limited to returning only 1 result, which deviates from CAPO api
+			// but resolves a lot of problems created by the previous api
 			netID, err := subnet.Filter.getNetworkID(networkService)
 			if err != nil {
-				return []capov1.PortOpts{}, nil
+				return []capov1.PortOpts{}, err
 			}
 
 			port.Network.ID = netID
@@ -195,7 +202,7 @@ func (net NetworkParam) toCapov1PortOpt(apiVIP, ingressVIP string, trunk *bool, 
 			Network:             &network,
 			AllowedAddressPairs: addressPairs,
 			Trunk:               trunk,
-			DisablePortSecurity: portSecurity,
+			DisablePortSecurity: disablePortSecurity,
 			VNICType:            net.VNICType,
 			FixedIPs:            fixedIPs,
 			Tags:                tags,
