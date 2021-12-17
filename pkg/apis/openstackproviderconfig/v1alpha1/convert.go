@@ -1,8 +1,12 @@
 package v1alpha1
 
 import (
+	"fmt"
+
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	machinev1 "github.com/openshift/api/machine/v1beta1"
 	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1"
+	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
 )
 
 func (cps OpenstackClusterProviderSpec) toClusterSpec() capov1.OpenStackClusterSpec {
@@ -51,7 +55,166 @@ func NewOpenStackCluster(providerSpec OpenstackClusterProviderSpec, providerStat
 	}
 }
 
-func (ps OpenstackProviderSpec) toMachineSpec() capov1.OpenStackMachineSpec {
+// Looks up a subnet in openstack and gets the ID of the network its attached to
+func (filter SubnetFilter) getNetworkID(networkService *networking.Service) (string, error) {
+	listOpts := subnets.ListOpts(filter)
+	subnets, err := networkService.GetSubnetsByFilter(listOpts)
+	if err != nil {
+		return "", err
+	}
+
+	if len(subnets) != 1 {
+		return "", fmt.Errorf("subnet query must return only 1 subnet")
+	}
+	return subnets[0].NetworkID, nil
+}
+
+// Converts NetworkParams to capov1 portOpts
+func (net NetworkParam) toCapov1PortOpt(apiVIP, ingressVIP string, trunk *bool, networkService *networking.Service) ([]capov1.PortOpts, error) {
+	ports := []capov1.PortOpts{}
+	addressPairs := []capov1.AddressPair{}
+	if !net.NoAllowedAddressPairs {
+		addressPairs = []capov1.AddressPair{
+			{
+				IPAddress: apiVIP,
+			},
+			{
+				IPAddress: ingressVIP,
+			},
+		}
+	}
+
+	// Flip the value of port security if not nil
+	// must preserve 3 use cases:
+	//   nil: openstack default
+	//   true: set explicitly to true
+	//   false: set explicitly to false
+	disablePortSecurity := net.PortSecurity
+	if net.PortSecurity != nil {
+		ps := !*disablePortSecurity
+		disablePortSecurity = &ps
+	}
+
+	network := capov1.NetworkFilter{
+		ID:          net.UUID,
+		Name:        net.Filter.Name,
+		Description: net.Filter.Description,
+		ProjectID:   net.Filter.ProjectID,
+		Tags:        net.Filter.Tags,
+		TagsAny:     net.Filter.TagsAny,
+		NotTags:     net.Filter.NotTags,
+		NotTagsAny:  net.Filter.NotTagsAny,
+	}
+	if network.ID == "" {
+		network.ID = net.Filter.ID
+	}
+
+	tags := net.PortTags
+
+	if network.ID == "" && (net.Filter == Filter{}) {
+		// Case: network is undefined and only has subnets
+		// Create a port for each subnet
+		for _, subnet := range net.Subnets {
+			if subnet.Filter.ID == "" {
+				subnet.Filter.ID = subnet.UUID
+			}
+
+			subnetID := subnet.UUID
+			if subnetID == "" {
+				subnetID = subnet.Filter.ID
+			}
+
+			fixedIP := []capov1.FixedIP{
+				{
+					Subnet: &capov1.SubnetFilter{
+						Name:            subnet.Filter.Name,
+						Description:     subnet.Filter.Description,
+						ProjectID:       subnet.Filter.ProjectID,
+						IPVersion:       subnet.Filter.IPVersion,
+						GatewayIP:       subnet.Filter.GatewayIP,
+						CIDR:            subnet.Filter.CIDR,
+						IPv6AddressMode: subnet.Filter.IPv6AddressMode,
+						IPv6RAMode:      subnet.Filter.IPv6RAMode,
+						ID:              subnetID,
+						Tags:            subnet.Filter.Tags,
+						TagsAny:         subnet.Filter.TagsAny,
+						NotTags:         subnet.Filter.NotTags,
+						NotTagsAny:      subnet.Filter.NotTagsAny,
+					},
+				},
+			}
+
+			portTags := append(tags, subnet.PortTags...)
+
+			port := capov1.PortOpts{
+				Network:             &network,
+				AllowedAddressPairs: addressPairs,
+				Trunk:               trunk,
+				DisablePortSecurity: disablePortSecurity,
+				VNICType:            net.VNICType,
+				FixedIPs:            fixedIP,
+				Tags:                portTags,
+			}
+
+			// Fetch the UUID of the network subnet is attached to or the conversion will fail
+			// NOTE: limited to returning only 1 result, which deviates from CAPO api
+			// but resolves a lot of problems created by the previous api
+			netID, err := subnet.Filter.getNetworkID(networkService)
+			if err != nil {
+				return []capov1.PortOpts{}, err
+			}
+
+			port.Network.ID = netID
+			ports = append(ports, port)
+
+		}
+	} else {
+		// Case: network and subnet are defined
+		// Create a single port with an interface for each subnet
+		fixedIPs := make([]capov1.FixedIP, len(net.Subnets))
+		for i, subnet := range net.Subnets {
+			id := subnet.UUID
+			if id == "" {
+				id = subnet.Filter.ID
+			}
+
+			fixedIPs[i] = capov1.FixedIP{
+				Subnet: &capov1.SubnetFilter{
+					Name:            subnet.Filter.Name,
+					Description:     subnet.Filter.Description,
+					ProjectID:       subnet.Filter.ProjectID,
+					IPVersion:       subnet.Filter.IPVersion,
+					GatewayIP:       subnet.Filter.GatewayIP,
+					CIDR:            subnet.Filter.CIDR,
+					IPv6AddressMode: subnet.Filter.IPv6AddressMode,
+					IPv6RAMode:      subnet.Filter.IPv6RAMode,
+					ID:              id,
+					Tags:            subnet.Filter.Tags,
+					TagsAny:         subnet.Filter.TagsAny,
+					NotTags:         subnet.Filter.NotTags,
+					NotTagsAny:      subnet.Filter.NotTagsAny,
+				},
+			}
+			tags = append(tags, subnet.PortTags...)
+		}
+
+		port := capov1.PortOpts{
+			Network:             &network,
+			AllowedAddressPairs: addressPairs,
+			Trunk:               trunk,
+			DisablePortSecurity: disablePortSecurity,
+			VNICType:            net.VNICType,
+			FixedIPs:            fixedIPs,
+			Tags:                tags,
+		}
+
+		ports = append(ports, port)
+	}
+
+	return ports, nil
+}
+
+func (ps OpenstackProviderSpec) toMachineSpec(apiVIP, ingressVIP string, networkService *networking.Service) (capov1.OpenStackMachineSpec, error) {
 	machineSpec := capov1.OpenStackMachineSpec{
 		CloudName:      ps.CloudName,
 		Flavor:         ps.Flavor,
@@ -90,10 +253,9 @@ func (ps OpenstackProviderSpec) toMachineSpec() capov1.OpenStackMachineSpec {
 		}
 	}
 
-	// TODO: close upstream/downstream feature gap: port security
 	for i, port := range ps.Ports {
 		machineSpec.Ports[i] = capov1.PortOpts{
-			NetworkID:           port.NetworkID,
+			Network:             &capov1.NetworkFilter{ID: port.NetworkID},
 			NameSuffix:          port.NameSuffix,
 			Description:         port.Description,
 			AdminStateUp:        port.AdminStateUp,
@@ -108,7 +270,10 @@ func (ps OpenstackProviderSpec) toMachineSpec() capov1.OpenStackMachineSpec {
 		}
 
 		for fixedIPindex, fixedIP := range port.FixedIPs {
-			machineSpec.Ports[i].FixedIPs[fixedIPindex] = capov1.FixedIP(fixedIP)
+			machineSpec.Ports[i].FixedIPs[fixedIPindex] = capov1.FixedIP{
+				Subnet:    &capov1.SubnetFilter{ID: fixedIP.SubnetID},
+				IPAddress: fixedIP.IPAddress,
+			}
 		}
 
 		for addrPairIndex, addrPair := range port.AllowedAddressPairs {
@@ -116,38 +281,37 @@ func (ps OpenstackProviderSpec) toMachineSpec() capov1.OpenStackMachineSpec {
 		}
 	}
 
-	// TODO: close upstream/downstream feature gap or depricate feature in favor of ports interface: port tags, port security
-	for i, network := range ps.Networks {
-		machineSpec.Networks[i] = capov1.NetworkParam{
-			UUID:    network.UUID,
-			FixedIP: network.FixedIp,
-			Filter:  capov1.Filter(network.Filter),
-			Subnets: make([]capov1.SubnetParam, len(network.Subnets)),
+	portList := []capov1.PortOpts{}
+	for _, network := range ps.Networks {
+		ports, err := network.toCapov1PortOpt(apiVIP, ingressVIP, &ps.Trunk, networkService)
+		if err != nil {
+			return capov1.OpenStackMachineSpec{}, err
 		}
-		for subnetIndex, subnet := range network.Subnets {
-			machineSpec.Networks[i].Subnets[subnetIndex] = capov1.SubnetParam{
-				UUID:   subnet.UUID,
-				Filter: capov1.SubnetFilter(subnet.Filter),
-			}
-		}
+		portList = append(portList, ports...)
 	}
 
-	return machineSpec
+	machineSpec.Ports = append(machineSpec.Ports, portList...)
+
+	return machineSpec, nil
 }
 
-func NewOpenStackMachine(machine *machinev1.Machine) (*capov1.OpenStackMachine, error) {
+func NewOpenStackMachine(machine *machinev1.Machine, apiVIP, ingressVIP string, networkService *networking.Service) (*capov1.OpenStackMachine, error) {
 	providerSpec, err := MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	if err != nil {
+		return nil, err
+	}
+
+	machineSpec, err := providerSpec.toMachineSpec(apiVIP, ingressVIP, networkService)
 	if err != nil {
 		return nil, err
 	}
 
 	osMachine := &capov1.OpenStackMachine{
 		ObjectMeta: machine.ObjectMeta,
-		Spec:       providerSpec.toMachineSpec(),
+		Spec:       machineSpec,
 	}
 
 	// if machine api master label exists, add v1beta control plane label to the node
-	// TODO(egarcia): fix the go mods so that we can track cluster-api@main and import this
 	if osMachine.ObjectMeta.Labels["machine.openshift.io/cluster-api-machine-role"] == "master" {
 		osMachine.ObjectMeta.Labels["cluster.x-k8s.io/control-plane"] = ""
 	}

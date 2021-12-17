@@ -668,7 +668,7 @@ sigs.k8s.io/cluster-api/errors
 sigs.k8s.io/cluster-api/feature
 sigs.k8s.io/cluster-api/util
 sigs.k8s.io/cluster-api/util/version
-# sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20211208064945-172c23f148b0
+# sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20211214023603-b936d98a83d6
 ## explicit
 sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1
 sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute
