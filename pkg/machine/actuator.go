@@ -322,12 +322,16 @@ func (oc *OpenstackClient) updateMachine(ctx context.Context, machine *machinev1
 	}
 
 	patch := client.MergeFrom(machine.DeepCopy())
-
 	setMachineLabels(machine, osc.cloud.RegionName, instanceStatus.AvailabilityZone(), providerSpec.Flavor)
-	if err := updateStatus(machine, instanceStatus); err != nil {
+	setMachineAnnotations(machine, instanceStatus)
+	if err := oc.client.Patch(ctx, machine, patch); err != nil {
 		return err
 	}
 
+	patch = client.MergeFrom(machine.DeepCopy())
+	if err := setMachineStatus(machine, instanceStatus); err != nil {
+		return err
+	}
 	return oc.client.Status().Patch(ctx, machine, patch)
 }
 
@@ -351,14 +355,29 @@ func setMachineLabels(machine *machinev1.Machine, region, availability_zone, fla
 	machine.Labels[maoMachine.MachineInstanceTypeLabelName] = flavor
 }
 
-func updateStatus(machine *machinev1.Machine, instanceStatus *compute.InstanceStatus) error {
-	// TODO: Delete InstanceStatusAnnotationKey if it is set
-	//const InstanceStatusAnnotationKey = "instance-status"
+func setMachineAnnotations(machine *machinev1.Machine, instanceStatus *compute.InstanceStatus) {
+	const InstanceStatusAnnotationKey = "instance-status"
+	const OpenstackIdAnnotationKey = "openstack-resourceId"
 
-	// Former annotations
-	// machine.ObjectMeta.Annotations[openstack.OpenstackIdAnnotationKey] = instanceID
+	// Former annotation
 	// machine.ObjectMeta.Annotations[openstack.OpenstackIPAnnotationKey] = primaryIP
 
+	if machine.Annotations == nil {
+		machine.Annotations = make(map[string]string)
+	}
+
+	// instance-status was previously used to determine if the object had
+	// been changed. It is no longer used.
+	if _, ok := machine.Annotations[InstanceStatusAnnotationKey]; ok {
+		klog.Info("Machine %s: Removed legacy instance-status annotation", machine.Name)
+		delete(machine.Annotations, InstanceStatusAnnotationKey)
+	}
+
+	machine.Annotations[OpenstackIdAnnotationKey] = instanceStatus.ID()
+	machine.Annotations[maoMachine.MachineInstanceStateAnnotationName] = string(instanceStatus.State())
+}
+
+func setMachineStatus(machine *machinev1.Machine, instanceStatus *compute.InstanceStatus) error {
 	networkStatus, err := instanceStatus.NetworkStatus()
 	if err != nil {
 		return err
