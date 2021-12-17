@@ -114,7 +114,7 @@ func (oc *OpenstackClient) getUserData(machine *machinev1.Machine, providerSpec 
 
 		userData, ok = userDataSecret.Data[UserDataKey]
 		if !ok {
-			return "", fmt.Errorf("Machine's userdata secret %v in namespace %v did not contain key %v", providerSpec.UserDataSecret.Name, namespace, UserDataKey)
+			return "", fmt.Errorf("machine's userdata secret %v in namespace %v did not contain key %v", providerSpec.UserDataSecret.Name, namespace, UserDataKey)
 		}
 
 		_, disableTemplating = userDataSecret.Data[DisableTemplatingKey]
@@ -155,23 +155,23 @@ func (oc *OpenstackClient) getUserData(machine *machinev1.Machine, providerSpec 
 		case "ct":
 			clcfg, ast, report := clconfig.Parse([]byte(userDataRendered))
 			if len(report.Entries) > 0 {
-				return "", fmt.Errorf("Postprocessor error: %s", report.String())
+				return "", fmt.Errorf("postprocessor error: %s", report.String())
 			}
 
 			ignCfg, report := clconfig.Convert(clcfg, "openstack-metadata", ast)
 			if len(report.Entries) > 0 {
-				return "", fmt.Errorf("Postprocessor error: %s", report.String())
+				return "", fmt.Errorf("postprocessor error: %s", report.String())
 			}
 
 			ud, err := json.Marshal(&ignCfg)
 			if err != nil {
-				return "", fmt.Errorf("Postprocessor error: %s", err)
+				return "", fmt.Errorf("postprocessor error: %s", err)
 			}
 
 			userDataRendered = string(ud)
 
 		default:
-			return "", fmt.Errorf("Postprocessor error: unknown postprocessor: '%s'", postprocessor)
+			return "", fmt.Errorf("postprocessor error: unknown postprocessor: '%s'", postprocessor)
 		}
 	}
 
