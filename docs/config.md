@@ -8,7 +8,7 @@ To succesfully run a kubernetes cluster in openstack, you will need to configure
   - Specific security group rules
   - At least one of the supported operating system images
 
-## Machines YAML
+## Machines YAML d
 
 After running the `generate-yaml.sh`, the file `cmd/clusterctl/examples/openstack/out/machines.yaml` will be created at that location. This file stores information on what openstack elements to use to create the cluster on, and which cluster components to create. We provide you with a template to create one master and one worker node, however the template is incomplete and needs to be filled in. It looks like this:
 
@@ -100,7 +100,7 @@ securityGroups:
 
 We don't currently have specific version requriements, and so the choice is yours. However, we do require that you have either a ubuntu image or a centos image available in your cluster. For this step, we would like to refer you to the following doccumentation, https://docs.openstack.org/image-guide/obtain-images.html.
 
-You can reference which operating system image you want to use in the machines.yaml script where it says `<Image Name>`. If you are using ubuntu, then replace `<SSH Username>` in machines.yaml with `ubuntu`. If you are using centos, then replace  `<SSH Username>` in machines.yaml with `centos`. 
+You can reference which operating system image you want to use in the machines.yaml script where it says `<Image Name>`. If you are using ubuntu, then replace `<SSH Username>` in machines.yaml with `ubuntu`. If you are using centos, then replace  `<SSH Username>` in machines.yaml with `centos`.
 
 ## Subnets
 Rather than just using a network, you have the option of specifying a specific subnet to connect your server to. The following is an example of how to specify a specific subnet of a network to use for a server.
