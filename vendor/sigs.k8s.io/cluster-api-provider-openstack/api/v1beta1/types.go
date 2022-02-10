@@ -164,6 +164,7 @@ type Instance struct {
 	Subnet         string            `json:"subnet,omitempty"`
 	Tags           []string          `json:"tags,omitempty"`
 	Image          string            `json:"image,omitempty"`
+	ImageUUID      string            `json:"imageUUID,omitempty"`
 	Flavor         string            `json:"flavor,omitempty"`
 	SSHKeyName     string            `json:"sshKeyName,omitempty"`
 	UserData       string            `json:"userData,omitempty"`
@@ -177,10 +178,9 @@ type Instance struct {
 }
 
 type RootVolume struct {
-	SourceType string `json:"sourceType,omitempty"`
-	SourceUUID string `json:"sourceUUID,omitempty"`
-	DeviceType string `json:"deviceType,omitempty"`
-	Size       int    `json:"diskSize,omitempty"`
+	Size             int    `json:"diskSize,omitempty"`
+	VolumeType       string `json:"volumeType,omitempty"`
+	AvailabilityZone string `json:"availabilityZone,omitempty"`
 }
 
 // Network represents basic information about an OpenStack Neutron Network associated with an instance's port.

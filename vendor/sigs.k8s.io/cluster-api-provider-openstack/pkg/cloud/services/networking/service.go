@@ -81,6 +81,10 @@ func NewTestService(projectID string, client NetworkClient, logger logr.Logger) 
 // replaceAllAttributesTags replaces all tags on a neworking resource.
 // the value of resourceType must match one of the allowed constants: trunkResource or portResource.
 func (s *Service) replaceAllAttributesTags(eventObject runtime.Object, resourceType string, resourceID string, tags []string) error {
+	if len(tags) == 0 {
+		s.logger.Info("no tags provided to ReplaceAllAttributesTags", "resourceType", resourceType, "resourceID", resourceID)
+		return nil
+	}
 	if resourceType != trunkResource && resourceType != portResource {
 		record.Warnf(eventObject, "FailedReplaceAllAttributesTags", "Invalid resourceType argument in function call")
 		panic(fmt.Errorf("invalid argument: resourceType, %s, does not match allowed arguments: %s or %s", resourceType, trunkResource, portResource))
