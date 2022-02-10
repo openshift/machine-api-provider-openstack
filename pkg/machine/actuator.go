@@ -124,6 +124,31 @@ func getInstanceStatus(machine *machinev1.Machine, computeService *compute.Servi
 	return computeService.GetInstanceStatus(instanceID)
 }
 
+func (oc *OpenstackClient) convertMachineToCapoV1(osc *openStackContext, machine *machinev1.Machine) (*capov1.OpenStackMachine, error) {
+	clusterInfra, err := oc.params.ConfigClient.Infrastructures().Get(context.TODO(), "cluster", metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to retrieve cluster Infrastructure object: %v", err)
+	}
+
+	networkService, err := osc.getNetworkService()
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to capov1
+	osMachine, err := openstackconfigv1.NewOpenStackMachine(
+		machine,
+		clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIP,
+		clusterInfra.Status.PlatformStatus.OpenStack.IngressIP,
+		networkService,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return osMachine, nil
+}
+
 func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machine) error {
 	providerSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
@@ -145,23 +170,7 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 		return oc.handleMachineError(machine, maoMachine.CreateMachine("error creating bootstrap for %s: %v", machine.Name, err), createEventAction)
 	}
 
-	clusterInfra, err := oc.params.ConfigClient.Infrastructures().Get(context.TODO(), "cluster", metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("Failed to retrieve cluster Infrastructure object: %v", err)
-	}
-
-	networkService, err := osc.getNetworkService()
-	if err != nil {
-		return err
-	}
-
-	// Convert to capov1
-	osMachine, err := openstackconfigv1.NewOpenStackMachine(
-		machine,
-		clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIP,
-		clusterInfra.Status.PlatformStatus.OpenStack.IngressIP,
-		networkService,
-	)
+	osMachine, err := oc.convertMachineToCapoV1(osc, machine)
 	if err != nil {
 		return err
 	}
@@ -196,7 +205,7 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 			"Deleting OpenStack instance %s due to concurrent update", instanceStatus.ID())
 
 		msg := fmt.Sprintf("error setting provider ID: %v", err)
-		if cleanupErr := computeService.DeleteInstance(machine, instanceStatus); cleanupErr != nil {
+		if cleanupErr := computeService.DeleteInstance(machine, &osMachine.Spec, machine.Name, instanceStatus); cleanupErr != nil {
 			msg = fmt.Sprintf("error deleting OpenStack instance %s: %v; original error %s",
 				instanceStatus.ID(), cleanupErr, msg)
 		}
@@ -226,16 +235,17 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 		return oc.handleMachineError(machine, maoMachine.DeleteMachine(
 			"error getting OpenStack instance: %v", err), deleteEventAction)
 	}
-	if instanceStatus == nil {
-		klog.Infof("Skipped deleting %s that is already deleted.\n", machine.Name)
-		return nil
+
+	osMachine, err := oc.convertMachineToCapoV1(osc, machine)
+	if err != nil {
+		return err
 	}
 
 	osCluster := getOSCluster()
 	if err != nil {
 		return err
 	}
-	err = computeService.DeleteInstance(&osCluster, instanceStatus)
+	err = computeService.DeleteInstance(&osCluster, &osMachine.Spec, machine.Name, instanceStatus)
 	if err != nil {
 		return oc.handleMachineError(machine, maoMachine.DeleteMachine(
 			"error deleting Openstack instance: %v", err), deleteEventAction)

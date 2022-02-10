@@ -235,14 +235,18 @@ func (ps OpenstackProviderSpec) toMachineSpec(apiVIP, ingressVIP string, network
 		},
 	}
 
-	// TODO: close upstream/downstream feature gap: zones
 	if ps.RootVolume != nil {
 		machineSpec.RootVolume = &capov1.RootVolume{
-			SourceType: ps.RootVolume.SourceType,
-			SourceUUID: ps.RootVolume.SourceUUID,
-			DeviceType: ps.RootVolume.DeviceType,
-			Size:       ps.RootVolume.Size,
+			Size:             ps.RootVolume.Size,
+			VolumeType:       ps.RootVolume.VolumeType,
+			AvailabilityZone: ps.RootVolume.Zone,
 		}
+
+		// TODO(dulek): Installer does not populate ps.Image when ps.RootVolume is set and will instead
+		//              populate ps.RootVolume.SourceUUID. Moreover, according to the ClusterOSImage
+		//              option definition this is always the name of the image and never the UUID.
+		//              We should allow UUID at some point and this will need an update.
+		machineSpec.Image = ps.RootVolume.SourceUUID
 	}
 
 	for i, secGrp := range ps.SecurityGroups {
