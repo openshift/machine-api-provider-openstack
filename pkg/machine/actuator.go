@@ -86,7 +86,7 @@ func (oc *OpenstackClient) getOpenStackContext(machine *machinev1.Machine) (*ope
 	if err != nil {
 		return nil, err
 	}
-	return &openStackContext{provider, &cloud}, nil
+	return &openStackContext{provider, &cloud, nil, nil}, nil
 }
 
 func getOSCluster() capov1.OpenStackCluster {

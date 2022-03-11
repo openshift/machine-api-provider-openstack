@@ -28,8 +28,10 @@ import (
 )
 
 type openStackContext struct {
-	provider *gophercloud.ProviderClient
-	cloud    *clientconfig.Cloud
+	provider       *gophercloud.ProviderClient
+	cloud          *clientconfig.Cloud
+	computeService *compute.Service
+	networkService *networking.Service
 }
 
 func clientOptsForCloud(cloud *clientconfig.Cloud) *clientconfig.ClientOpts {
@@ -40,11 +42,25 @@ func clientOptsForCloud(cloud *clientconfig.Cloud) *clientconfig.ClientOpts {
 }
 
 func (osc *openStackContext) getComputeService() (*compute.Service, error) {
-	return compute.NewService(osc.provider, clientOptsForCloud(osc.cloud), ctrl.Log.WithName("capo-compute"))
+	if osc.computeService == nil {
+		computeService, err := compute.NewService(osc.provider, clientOptsForCloud(osc.cloud), ctrl.Log.WithName("capo-compute"))
+		if err != nil {
+			return nil, err
+		}
+		osc.computeService = computeService
+	}
+	return osc.computeService, nil
 }
 
 func (osc *openStackContext) getNetworkService() (*networking.Service, error) {
-	return networking.NewService(osc.provider, clientOptsForCloud(osc.cloud), ctrl.Log.WithName("capo-network"))
+	if osc.networkService == nil {
+		networkService, err := networking.NewService(osc.provider, clientOptsForCloud(osc.cloud), ctrl.Log.WithName("capo-network"))
+		if err != nil {
+			return nil, err
+		}
+		osc.networkService = networkService
+	}
+	return osc.networkService, nil
 }
 
 func getClusterNameWithNamespace(machine *machinev1.Machine) string {
