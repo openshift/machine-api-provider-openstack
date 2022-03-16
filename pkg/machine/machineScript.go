@@ -132,17 +132,17 @@ func (oc *OpenstackClient) getUserData(machine *machinev1.Machine, providerSpec 
 		if machine.ObjectMeta.Name != "" {
 			userDataRendered, err = masterStartupScript(machine, string(userData))
 			if err != nil {
-				return "", fmt.Errorf("error creating Openstack instance: %v", err)
+				return "", fmt.Errorf("error rendering master startup script for machine %q: %w", machine.Name, err)
 			}
 		} else {
 			klog.Info("Creating bootstrap token")
 			token, err := bootstrap.CreateBootstrapToken(oc.client)
 			if err != nil {
-				return "", fmt.Errorf("error creating Openstack instance: %v", err)
+				return "", fmt.Errorf("error creating bootstrap token for machine %q: %w", machine.Name, err)
 			}
 			userDataRendered, err = nodeStartupScript(machine, token, string(userData))
 			if err != nil {
-				return "", fmt.Errorf("error creating Openstack instance: %v", err)
+				return "", fmt.Errorf("error rendering startup script for machine %q: %w", machine.Name, err)
 			}
 		}
 	} else {
