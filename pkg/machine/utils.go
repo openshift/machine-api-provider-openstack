@@ -17,11 +17,8 @@ limitations under the License.
 package machine
 
 import (
-	"fmt"
-
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/utils/openstack/clientconfig"
-	machinev1 "github.com/openshift/api/machine/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -61,9 +58,4 @@ func (osc *openStackContext) getNetworkService() (*networking.Service, error) {
 		osc.networkService = networkService
 	}
 	return osc.networkService, nil
-}
-
-func getClusterNameWithNamespace(machine *machinev1.Machine) string {
-	clusterName := machine.Labels[machinev1.MachineClusterIDLabel]
-	return fmt.Sprintf("%s-%s", machine.Namespace, clusterName)
 }

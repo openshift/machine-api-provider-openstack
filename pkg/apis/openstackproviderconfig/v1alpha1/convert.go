@@ -5,6 +5,7 @@ import (
 
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	machinev1 "github.com/openshift/api/machine/v1beta1"
+	"github.com/openshift/machine-api-provider-openstack/pkg/utils"
 	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
 )
@@ -214,6 +215,14 @@ func (net NetworkParam) toCapov1PortOpt(apiVIP, ingressVIP string, trunk *bool, 
 	return ports, nil
 }
 
+func (ps *OpenstackProviderSpec) injectDefaultTags(machine *machinev1.Machine) {
+	defaultTags := []string{
+		"cluster-api-provider-openstack",
+		utils.GetClusterNameWithNamespace(machine),
+	}
+	ps.Tags = append(ps.Tags, defaultTags...)
+}
+
 func (ps OpenstackProviderSpec) toMachineSpec(apiVIP, ingressVIP string, networkService *networking.Service) (capov1.OpenStackMachineSpec, error) {
 	machineSpec := capov1.OpenStackMachineSpec{
 		CloudName:      ps.CloudName,
@@ -304,6 +313,9 @@ func NewOpenStackMachine(machine *machinev1.Machine, apiVIP, ingressVIP string, 
 	if err != nil {
 		return nil, err
 	}
+
+	// In OpenShift CAPO we've added additional tags to OpenStack resources and we should maintain that behavior.
+	providerSpec.injectDefaultTags(machine)
 
 	machineSpec, err := providerSpec.toMachineSpec(apiVIP, ingressVIP, networkService)
 	if err != nil {

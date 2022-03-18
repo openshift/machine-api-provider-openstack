@@ -31,6 +31,7 @@ import (
 
 	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
+	"github.com/openshift/machine-api-provider-openstack/pkg/utils"
 
 	machinev1 "github.com/openshift/api/machine/v1beta1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
@@ -244,7 +245,7 @@ func (oc *OpenstackClient) createInstance(ctx context.Context, machine *machinev
 	}
 
 	osCluster := getOSCluster()
-	clusterNameWithNamespace := getClusterNameWithNamespace(machine)
+	clusterNameWithNamespace := utils.GetClusterNameWithNamespace(machine)
 	instanceStatus, err := computeService.CreateInstance(&osCluster, &v1Machine, osMachine, clusterNameWithNamespace, userDataRendered)
 	if err != nil {
 		return nil, maoMachine.CreateMachine("error creating Openstack instance: %v", err)
@@ -275,7 +276,7 @@ func reconcileFloatingIP(machine *machinev1.Machine, providerSpec *openstackconf
 		return err
 	}
 	osCluster := getOSCluster()
-	fp, err := networkService.GetOrCreateFloatingIP(&osCluster, getClusterNameWithNamespace(machine), providerSpec.FloatingIP)
+	fp, err := networkService.GetOrCreateFloatingIP(&osCluster, utils.GetClusterNameWithNamespace(machine), providerSpec.FloatingIP)
 	if err != nil {
 		return fmt.Errorf("get floatingIP err: %v", err)
 	}
