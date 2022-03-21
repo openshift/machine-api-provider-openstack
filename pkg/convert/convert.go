@@ -1,15 +1,67 @@
-package v1alpha1
+/*
+Copyright 2022 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package convert
 
 import (
 	"fmt"
 
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
-	machinev1 "github.com/openshift/api/machine/v1beta1"
 	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
+
+	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
+	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
+	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 )
 
-func (cps OpenstackClusterProviderSpec) toClusterSpec() capov1.OpenStackClusterSpec {
+func NewOpenStackCluster(providerSpec machinev1alpha1.OpenstackClusterProviderSpec, providerStatus machinev1alpha1.OpenstackClusterProviderStatus) capov1.OpenStackCluster {
+	return capov1.OpenStackCluster{
+		ObjectMeta: providerSpec.ObjectMeta,
+
+		Spec:   osClusterProviderSpectoOSClusterSpec(&providerSpec),
+		Status: osClusterProviderStatustoOSClusterStatus(&providerStatus),
+	}
+}
+
+func NewOpenStackMachine(machine *machinev1beta1.Machine, apiVIP, ingressVIP string, networkService *networking.Service) (*capov1.OpenStackMachine, error) {
+	providerSpec, err := clients.MachineSpecFromProviderSpec(&machine.Spec.ProviderSpec)
+	if err != nil {
+		return nil, err
+	}
+
+	machineSpec, err := osProviderSpecToMachineSpec(providerSpec, apiVIP, ingressVIP, networkService)
+	if err != nil {
+		return nil, err
+	}
+
+	osMachine := &capov1.OpenStackMachine{
+		ObjectMeta: machine.ObjectMeta,
+		Spec:       machineSpec,
+	}
+
+	// if machine api master label exists, add v1beta control plane label to the node
+	if osMachine.ObjectMeta.Labels["machine.openshift.io/cluster-api-machine-role"] == "master" {
+		osMachine.ObjectMeta.Labels["cluster.x-k8s.io/control-plane"] = ""
+	}
+
+	return osMachine, nil
+}
+
+func osClusterProviderSpectoOSClusterSpec(cps *machinev1alpha1.OpenstackClusterProviderSpec) capov1.OpenStackClusterSpec {
 	return capov1.OpenStackClusterSpec{
 		NodeCIDR:              cps.NodeCIDR,
 		DNSNameservers:        cps.DNSNameservers,
@@ -19,7 +71,7 @@ func (cps OpenstackClusterProviderSpec) toClusterSpec() capov1.OpenStackClusterS
 	}
 }
 
-func (cps OpenstackClusterProviderStatus) toClusterStatus() capov1.OpenStackClusterStatus {
+func osClusterProviderStatustoOSClusterStatus(cps *machinev1alpha1.OpenstackClusterProviderStatus) capov1.OpenStackClusterStatus {
 	clusterStatus := capov1.OpenStackClusterStatus{Ready: true}
 
 	if cps.Network != nil {
@@ -46,18 +98,9 @@ func (cps OpenstackClusterProviderStatus) toClusterStatus() capov1.OpenStackClus
 	return clusterStatus
 }
 
-func NewOpenStackCluster(providerSpec OpenstackClusterProviderSpec, providerStatus OpenstackClusterProviderStatus) capov1.OpenStackCluster {
-	return capov1.OpenStackCluster{
-		ObjectMeta: providerSpec.ObjectMeta,
-
-		Spec:   providerSpec.toClusterSpec(),
-		Status: providerStatus.toClusterStatus(),
-	}
-}
-
 // Looks up a subnet in openstack and gets the ID of the network its attached to
-func (filter SubnetFilter) getNetworkID(networkService *networking.Service) (string, error) {
-	listOpts := subnets.ListOpts(filter)
+func getNetworkIDFromSubnetFilter(filter *machinev1alpha1.SubnetFilter, networkService *networking.Service) (string, error) {
+	listOpts := subnets.ListOpts(*filter)
 	subnets, err := networkService.GetSubnetsByFilter(listOpts)
 	if err != nil {
 		return "", err
@@ -70,7 +113,7 @@ func (filter SubnetFilter) getNetworkID(networkService *networking.Service) (str
 }
 
 // Converts NetworkParams to capov1 portOpts
-func (net NetworkParam) toCapov1PortOpt(apiVIP, ingressVIP string, trunk *bool, networkService *networking.Service) ([]capov1.PortOpts, error) {
+func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIP, ingressVIP string, trunk *bool, networkService *networking.Service) ([]capov1.PortOpts, error) {
 	ports := []capov1.PortOpts{}
 	addressPairs := []capov1.AddressPair{}
 	if !net.NoAllowedAddressPairs {
@@ -111,7 +154,7 @@ func (net NetworkParam) toCapov1PortOpt(apiVIP, ingressVIP string, trunk *bool, 
 
 	tags := net.PortTags
 
-	if network.ID == "" && (net.Filter == Filter{}) {
+	if network.ID == "" && (net.Filter == machinev1alpha1.Filter{}) {
 		// Case: network is undefined and only has subnets
 		// Create a port for each subnet
 		for _, subnet := range net.Subnets {
@@ -159,7 +202,7 @@ func (net NetworkParam) toCapov1PortOpt(apiVIP, ingressVIP string, trunk *bool, 
 			// Fetch the UUID of the network subnet is attached to or the conversion will fail
 			// NOTE: limited to returning only 1 result, which deviates from CAPO api
 			// but resolves a lot of problems created by the previous api
-			netID, err := subnet.Filter.getNetworkID(networkService)
+			netID, err := getNetworkIDFromSubnetFilter(&subnet.Filter, networkService)
 			if err != nil {
 				return []capov1.PortOpts{}, err
 			}
@@ -214,7 +257,7 @@ func (net NetworkParam) toCapov1PortOpt(apiVIP, ingressVIP string, trunk *bool, 
 	return ports, nil
 }
 
-func (ps OpenstackProviderSpec) toMachineSpec(apiVIP, ingressVIP string, networkService *networking.Service) (capov1.OpenStackMachineSpec, error) {
+func osProviderSpecToMachineSpec(ps *machinev1alpha1.OpenstackProviderSpec, apiVIP string, ingressVIP string, networkService *networking.Service) (capov1.OpenStackMachineSpec, error) {
 	machineSpec := capov1.OpenStackMachineSpec{
 		CloudName:      ps.CloudName,
 		Flavor:         ps.Flavor,
@@ -287,7 +330,7 @@ func (ps OpenstackProviderSpec) toMachineSpec(apiVIP, ingressVIP string, network
 
 	portList := []capov1.PortOpts{}
 	for _, network := range ps.Networks {
-		ports, err := network.toCapov1PortOpt(apiVIP, ingressVIP, &ps.Trunk, networkService)
+		ports, err := networkParamToCapov1PortOpt(&network, apiVIP, ingressVIP, &ps.Trunk, networkService)
 		if err != nil {
 			return capov1.OpenStackMachineSpec{}, err
 		}
@@ -297,28 +340,4 @@ func (ps OpenstackProviderSpec) toMachineSpec(apiVIP, ingressVIP string, network
 	machineSpec.Ports = append(machineSpec.Ports, portList...)
 
 	return machineSpec, nil
-}
-
-func NewOpenStackMachine(machine *machinev1.Machine, apiVIP, ingressVIP string, networkService *networking.Service) (*capov1.OpenStackMachine, error) {
-	providerSpec, err := MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
-	if err != nil {
-		return nil, err
-	}
-
-	machineSpec, err := providerSpec.toMachineSpec(apiVIP, ingressVIP, networkService)
-	if err != nil {
-		return nil, err
-	}
-
-	osMachine := &capov1.OpenStackMachine{
-		ObjectMeta: machine.ObjectMeta,
-		Spec:       machineSpec,
-	}
-
-	// if machine api master label exists, add v1beta control plane label to the node
-	if osMachine.ObjectMeta.Labels["machine.openshift.io/cluster-api-machine-role"] == "master" {
-		osMachine.ObjectMeta.Labels["cluster.x-k8s.io/control-plane"] = ""
-	}
-
-	return osMachine, nil
 }

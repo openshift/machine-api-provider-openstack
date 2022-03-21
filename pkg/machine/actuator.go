@@ -22,24 +22,23 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/record"
-
-	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1"
-	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-
-	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
-	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
-
-	machinev1 "github.com/openshift/api/machine/v1beta1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	maoMachine "github.com/openshift/machine-api-operator/pkg/controller/machine"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1"
+	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
+	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
+	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
+	"github.com/openshift/machine-api-provider-openstack/pkg/convert"
 )
 
 // ActuatorParams holds parameter information for Actuator
@@ -72,7 +71,7 @@ func NewActuator(params ActuatorParams) (*OpenstackClient, error) {
 	}, nil
 }
 
-func (oc *OpenstackClient) getOpenStackContext(machine *machinev1.Machine) (*openStackContext, error) {
+func (oc *OpenstackClient) getOpenStackContext(machine *machinev1beta1.Machine) (*openStackContext, error) {
 	cloud, err := clients.GetCloud(oc.params.KubeClient, machine)
 	if err != nil {
 		return nil, err
@@ -86,12 +85,12 @@ func (oc *OpenstackClient) getOpenStackContext(machine *machinev1.Machine) (*ope
 
 func getOSCluster() capov1.OpenStackCluster {
 	// TODO(egarcia): if we ever use the cluster object, this will benifit from reading from it
-	var clusterSpec openstackconfigv1.OpenstackClusterProviderSpec
+	var clusterSpec machinev1alpha1.OpenstackClusterProviderSpec
 
-	return openstackconfigv1.NewOpenStackCluster(clusterSpec, openstackconfigv1.OpenstackClusterProviderStatus{})
+	return convert.NewOpenStackCluster(clusterSpec, machinev1alpha1.OpenstackClusterProviderStatus{})
 }
 
-func (oc *OpenstackClient) setProviderID(ctx context.Context, machine *machinev1.Machine, instanceID string) error {
+func (oc *OpenstackClient) setProviderID(ctx context.Context, machine *machinev1beta1.Machine, instanceID string) error {
 	// Don't update existing providerID
 	if machine.Spec.ProviderID != nil {
 		return nil
@@ -105,7 +104,7 @@ func (oc *OpenstackClient) setProviderID(ctx context.Context, machine *machinev1
 	return oc.client.Patch(ctx, machine, patch)
 }
 
-func getInstanceStatus(osc *openStackContext, machine *machinev1.Machine) (*compute.InstanceStatus, error) {
+func getInstanceStatus(osc *openStackContext, machine *machinev1beta1.Machine) (*compute.InstanceStatus, error) {
 	computeService, err := osc.getComputeService()
 	if err != nil {
 		return nil, err
@@ -124,7 +123,7 @@ func getInstanceStatus(osc *openStackContext, machine *machinev1.Machine) (*comp
 	return computeService.GetInstanceStatus(instanceID)
 }
 
-func (oc *OpenstackClient) convertMachineToCapoV1(osc *openStackContext, machine *machinev1.Machine) (*capov1.OpenStackMachine, error) {
+func (oc *OpenstackClient) convertMachineToCapoV1(osc *openStackContext, machine *machinev1beta1.Machine) (*capov1.OpenStackMachine, error) {
 	clusterInfra, err := oc.params.ConfigClient.Infrastructures().Get(context.TODO(), "cluster", metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve cluster Infrastructure object: %v", err)
@@ -136,7 +135,7 @@ func (oc *OpenstackClient) convertMachineToCapoV1(osc *openStackContext, machine
 	}
 
 	// Convert to capov1
-	osMachine, err := openstackconfigv1.NewOpenStackMachine(
+	osMachine, err := convert.NewOpenStackMachine(
 		machine,
 		clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIP,
 		clusterInfra.Status.PlatformStatus.OpenStack.IngressIP,
@@ -149,16 +148,16 @@ func (oc *OpenstackClient) convertMachineToCapoV1(osc *openStackContext, machine
 	return osMachine, nil
 }
 
-func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machine) error {
+func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1beta1.Machine) error {
 	return oc.reconcile(ctx, machine)
 }
 
-func (oc *OpenstackClient) Update(ctx context.Context, machine *machinev1.Machine) error {
+func (oc *OpenstackClient) Update(ctx context.Context, machine *machinev1beta1.Machine) error {
 	return oc.reconcile(ctx, machine)
 }
 
-func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Machine) error {
-	providerSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1beta1.Machine) error {
+	providerSpec, err := clients.MachineSpecFromProviderSpec(&machine.Spec.ProviderSpec)
 	if err != nil {
 		return maoMachine.InvalidMachineConfiguration("Cannot unmarshal providerSpec for %s: %v", machine.Name, err)
 	}
@@ -219,7 +218,7 @@ func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Mac
 	return nil
 }
 
-func (oc *OpenstackClient) createInstance(ctx context.Context, machine *machinev1.Machine, osc *openStackContext, providerSpec *openstackconfigv1.OpenstackProviderSpec) (*compute.InstanceStatus, error) {
+func (oc *OpenstackClient) createInstance(ctx context.Context, machine *machinev1beta1.Machine, osc *openStackContext, providerSpec *machinev1alpha1.OpenstackProviderSpec) (*compute.InstanceStatus, error) {
 	if err := oc.validateMachine(machine); err != nil {
 		return nil, maoMachine.InvalidMachineConfiguration("Machine validation failed: %v", err)
 	}
@@ -253,7 +252,7 @@ func (oc *OpenstackClient) createInstance(ctx context.Context, machine *machinev
 	return instanceStatus, nil
 }
 
-func reconcileFloatingIP(machine *machinev1.Machine, providerSpec *openstackconfigv1.OpenstackProviderSpec, instanceStatus *compute.InstanceStatus, osc *openStackContext) error {
+func reconcileFloatingIP(machine *machinev1beta1.Machine, providerSpec *machinev1alpha1.OpenstackProviderSpec, instanceStatus *compute.InstanceStatus, osc *openStackContext) error {
 	if providerSpec.FloatingIP == "" {
 		return nil
 	}
@@ -297,7 +296,7 @@ func reconcileFloatingIP(machine *machinev1.Machine, providerSpec *openstackconf
 	return &maoMachine.RequeueAfterError{RequeueAfter: 5 * time.Second}
 }
 
-func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machine) error {
+func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1beta1.Machine) error {
 	osc, err := oc.getOpenStackContext(machine)
 	if err != nil {
 		return err
@@ -328,7 +327,7 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 	return nil
 }
 
-func setMachineLabels(machine *machinev1.Machine, region, availability_zone, flavor string) {
+func setMachineLabels(machine *machinev1beta1.Machine, region, availability_zone, flavor string) {
 	// Don't update labels which have already been set
 	if machine.Labels[maoMachine.MachineRegionLabelName] != "" && machine.Labels[maoMachine.MachineAZLabelName] != "" && machine.Labels[maoMachine.MachineInstanceTypeLabelName] != "" {
 		return
@@ -348,7 +347,7 @@ func setMachineLabels(machine *machinev1.Machine, region, availability_zone, fla
 	machine.Labels[maoMachine.MachineInstanceTypeLabelName] = flavor
 }
 
-func setMachineAnnotations(machine *machinev1.Machine, instanceStatus *compute.InstanceStatus) {
+func setMachineAnnotations(machine *machinev1beta1.Machine, instanceStatus *compute.InstanceStatus) {
 	const InstanceStatusAnnotationKey = "instance-status"
 	const OpenstackIdAnnotationKey = "openstack-resourceId"
 
@@ -370,7 +369,7 @@ func setMachineAnnotations(machine *machinev1.Machine, instanceStatus *compute.I
 	machine.Annotations[maoMachine.MachineInstanceStateAnnotationName] = string(instanceStatus.State())
 }
 
-func setMachineStatus(machine *machinev1.Machine, instanceStatus *compute.InstanceStatus) error {
+func setMachineStatus(machine *machinev1beta1.Machine, instanceStatus *compute.InstanceStatus) error {
 	networkStatus, err := instanceStatus.NetworkStatus()
 	if err != nil {
 		return err
@@ -389,7 +388,7 @@ func setMachineStatus(machine *machinev1.Machine, instanceStatus *compute.Instan
 	return nil
 }
 
-func (oc *OpenstackClient) Exists(ctx context.Context, machine *machinev1.Machine) (bool, error) {
+func (oc *OpenstackClient) Exists(ctx context.Context, machine *machinev1beta1.Machine) (bool, error) {
 	osc, err := oc.getOpenStackContext(machine)
 	if err != nil {
 		return false, err
@@ -402,8 +401,8 @@ func (oc *OpenstackClient) Exists(ctx context.Context, machine *machinev1.Machin
 	return instanceStatus != nil, nil
 }
 
-func (oc *OpenstackClient) validateMachine(machine *machinev1.Machine) error {
-	machineSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+func (oc *OpenstackClient) validateMachine(machine *machinev1beta1.Machine) error {
+	machineSpec, err := clients.MachineSpecFromProviderSpec(&machine.Spec.ProviderSpec)
 	if err != nil {
 		return fmt.Errorf("\nError getting the machine spec from the provider spec: %v", err)
 	}
