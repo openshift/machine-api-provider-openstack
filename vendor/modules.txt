@@ -763,7 +763,7 @@ sigs.k8s.io/cluster-api/errors
 sigs.k8s.io/cluster-api/feature
 sigs.k8s.io/cluster-api/util
 sigs.k8s.io/cluster-api/util/version
-# sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20220113110629-19889578bf84
+# sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20220113110629-19889578bf84 => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220113110629-19889578bf84
 ## explicit; go 1.16
 sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1
 sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute
@@ -917,3 +917,4 @@ sigs.k8s.io/structured-merge-diff/v4/value
 ## explicit; go 1.12
 sigs.k8s.io/yaml
 # sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.0.2
+# sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220113110629-19889578bf84

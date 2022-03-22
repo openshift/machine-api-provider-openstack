@@ -114,4 +114,7 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.0 // indirect
 )
 
-replace sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.0.2
+replace (
+	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.0.2
+	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220113110629-19889578bf84
+)

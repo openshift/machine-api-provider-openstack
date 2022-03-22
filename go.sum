@@ -818,6 +818,8 @@ github.com/openshift/build-machinery-go v0.0.0-20210712174854-1bb7fd1518d3/go.mo
 github.com/openshift/build-machinery-go v0.0.0-20211213093930-7e33a7eb4ce3/go.mod h1:b1BuldmJlbA/xYtdZvKi+7j5YGB44qJUJDZ9zwiNCfE=
 github.com/openshift/client-go v0.0.0-20211209144617-7385dd6338e3 h1:SG1aqwleU6bGD0X4mhkTNupjVnByMYYuW4XbnCPavQU=
 github.com/openshift/client-go v0.0.0-20211209144617-7385dd6338e3/go.mod h1:cwhyki5lqBmrT0m8Im+9I7PGFaraOzcYPtEz93RcsGY=
+github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220113110629-19889578bf84 h1:lHIUlc0+eLjhEQWhnzhNQC4hdLOeIZt43J2m+wJZG/U=
+github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220113110629-19889578bf84/go.mod h1:DjUUwFBscjYRihaHOXVMtNlBBazsstagsGO72TrqUik=
 github.com/openshift/library-go v0.0.0-20211220195323-eca2c467c492 h1:oj/rSQqVWVj6YJUydZwLz2frrJreiyI4oa9g/YPgMsM=
 github.com/openshift/library-go v0.0.0-20211220195323-eca2c467c492/go.mod h1:4UQ9snU1vg53fyTpHQw3vLPiAxI8ub5xrc+y8KPQQFs=
 github.com/openshift/machine-api-operator v0.2.1-0.20211223185609-7ba373c29f8f h1:op3c+b/cPqdApZQUfueoSvBqIrqg772nXPe3pB+PFi4=
@@ -1734,8 +1736,6 @@ sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.22/go.mod h1:LEScyz
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.25/go.mod h1:Mlj9PNLmG9bZ6BHFwFKDo5afkpWyUISkb9Me0GnK66I=
 sigs.k8s.io/cluster-api v1.0.2 h1:V2pzMUfyVv29vf6q5RVLuPIp8PAcnLYcBcH9bzoMDLY=
 sigs.k8s.io/cluster-api v1.0.2/go.mod h1:/LkJXtsvhxTV4U0z1Y2Y1Gr2xebJ0/ce09Ab2M0XU/U=
-sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20220113110629-19889578bf84 h1:P+D8AH4RQf1sI6KvOdcqAerjlroIctstTcxrzjtRfL0=
-sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20220113110629-19889578bf84/go.mod h1:DjUUwFBscjYRihaHOXVMtNlBBazsstagsGO72TrqUik=
 sigs.k8s.io/cluster-api/test v1.0.1-0.20211028151834-d72fd59c8483/go.mod h1:NISRUeCxvEa6qUhVtfWt0t/C9ljTzGT9joft0YeN+3s=
 sigs.k8s.io/controller-runtime v0.10.3-0.20211011182302-43ea648ec318/go.mod h1:CQp8eyUQZ/Q7PJvnIrB6/hgfTC1kBkGylwsLgOQi1WY=
 sigs.k8s.io/controller-runtime v0.10.3/go.mod h1:CQp8eyUQZ/Q7PJvnIrB6/hgfTC1kBkGylwsLgOQi1WY=
