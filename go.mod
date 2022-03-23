@@ -4,11 +4,11 @@ go 1.17
 
 require (
 	github.com/coreos/container-linux-config-transpiler v0.9.0
-	github.com/go-logr/logr v1.2.2
-	github.com/gophercloud/gophercloud v0.16.0
-	github.com/gophercloud/utils v0.0.0-20210323225332-7b186010c04f
+	github.com/go-logr/logr v1.2.3
+	github.com/gophercloud/gophercloud v0.24.0
+	github.com/gophercloud/utils v0.0.0-20220307143606-8e7800759d16
 	github.com/onsi/ginkgo v1.16.5
-	github.com/onsi/gomega v1.17.0
+	github.com/onsi/gomega v1.18.1
 	github.com/openshift/api v0.0.0-20211222145011-3bf13cf5081a
 	github.com/openshift/client-go v0.0.0-20211209144617-7385dd6338e3
 	github.com/openshift/machine-api-operator v0.2.1-0.20211223185609-7ba373c29f8f
@@ -92,7 +92,7 @@ require (
 	go4.org v0.0.0-20191010144846-132d2879e1e9 // indirect
 	golang.org/x/net v0.0.0-20211209124913-491a49abca63 // indirect
 	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f // indirect
-	golang.org/x/sys v0.0.0-20211029165221-6e7872819dc8 // indirect
+	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
 	golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect
