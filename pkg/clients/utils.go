@@ -4,20 +4,20 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/utils/openstack/clientconfig"
-	machinev1 "github.com/openshift/api/machine/v1beta1"
-	"gopkg.in/yaml.v2"
-
-	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/yaml"
+
+	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
+	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
 )
 
 const (
@@ -25,9 +25,9 @@ const (
 )
 
 // GetCloud fetches cloud credentials from a secret and return a parsed Cloud structure
-func GetCloud(kubeClient kubernetes.Interface, machine *machinev1.Machine) (clientconfig.Cloud, error) {
+func GetCloud(kubeClient kubernetes.Interface, machine *machinev1beta1.Machine) (clientconfig.Cloud, error) {
 	cloud := clientconfig.Cloud{}
-	machineSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	machineSpec, err := MachineSpecFromProviderSpec(&machine.Spec.ProviderSpec)
 	if err != nil {
 		return cloud, fmt.Errorf("Failed to get Machine Spec from Provider Spec: %v", err)
 	}
@@ -142,4 +142,17 @@ func GetCloudFromSecret(kubeClient kubernetes.Interface, namespace string, secre
 	}
 
 	return clouds.Clouds[cloudName], nil
+}
+
+// MachineSpecFromProviderSpec unmarshals a raw ProviderSpec into an OpenStackProviderSpec
+func MachineSpecFromProviderSpec(providerSpec *machinev1beta1.ProviderSpec) (*machinev1alpha1.OpenstackProviderSpec, error) {
+	if providerSpec.Value == nil {
+		return nil, errors.New("no such providerSpec found in manifest")
+	}
+
+	var config machinev1alpha1.OpenstackProviderSpec
+	if err := yaml.Unmarshal(providerSpec.Value.Raw, &config); err != nil {
+		return nil, err
+	}
+	return &config, nil
 }

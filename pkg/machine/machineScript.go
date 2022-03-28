@@ -23,14 +23,15 @@ import (
 	"fmt"
 	"text/template"
 
-	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
-	"github.com/openshift/machine-api-provider-openstack/pkg/bootstrap"
-
 	clconfig "github.com/coreos/container-linux-config-transpiler/config"
-	machinev1 "github.com/openshift/api/machine/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+
+	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
+	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
+	"github.com/openshift/machine-api-provider-openstack/pkg/bootstrap"
+	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 )
 
 const (
@@ -41,15 +42,15 @@ const (
 
 type setupParams struct {
 	Token       string
-	Machine     *machinev1.Machine
-	MachineSpec *openstackconfigv1.OpenstackProviderSpec
+	Machine     *machinev1beta1.Machine
+	MachineSpec *machinev1alpha1.OpenstackProviderSpec
 }
 
 func init() {
 }
 
-func masterStartupScript(machine *machinev1.Machine, script string) (string, error) {
-	machineSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+func masterStartupScript(machine *machinev1beta1.Machine, script string) (string, error) {
+	machineSpec, err := clients.MachineSpecFromProviderSpec(&machine.Spec.ProviderSpec)
 	if err != nil {
 		return "", err
 	}
@@ -68,8 +69,8 @@ func masterStartupScript(machine *machinev1.Machine, script string) (string, err
 	return buf.String(), nil
 }
 
-func nodeStartupScript(machine *machinev1.Machine, token, script string) (string, error) {
-	machineSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+func nodeStartupScript(machine *machinev1beta1.Machine, token, script string) (string, error) {
+	machineSpec, err := clients.MachineSpecFromProviderSpec(&machine.Spec.ProviderSpec)
 	if err != nil {
 		return "", err
 	}
@@ -89,7 +90,7 @@ func nodeStartupScript(machine *machinev1.Machine, token, script string) (string
 	return buf.String(), nil
 }
 
-func (oc *OpenstackClient) getUserData(machine *machinev1.Machine, providerSpec *openstackconfigv1.OpenstackProviderSpec, kubeClient kubernetes.Interface) (string, error) {
+func (oc *OpenstackClient) getUserData(machine *machinev1beta1.Machine, providerSpec *machinev1alpha1.OpenstackProviderSpec, kubeClient kubernetes.Interface) (string, error) {
 	// get machine startup script
 	var ok bool
 	var disableTemplating bool

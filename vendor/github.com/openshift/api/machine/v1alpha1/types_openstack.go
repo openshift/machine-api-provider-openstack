@@ -22,12 +22,13 @@ import (
 )
 
 // +genclient
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // OpenstackProviderSpec is the type that will be embedded in a Machine.Spec.ProviderSpec field
 // for an OpenStack Instance. It is used by the Openstack machine actuator to create a single machine instance.
-// TODO(cglaubitz): We might consider to change this to OpenstackMachineProviderSpec
 // +k8s:openapi-gen=true
+// Compatibility level 4: No compatibility is provided, the API can change at any point for any reason. These capabilities should not be used by applications needing long term support.
+// +openshift:compatibility-gen:level=4
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type OpenstackProviderSpec struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -135,8 +136,9 @@ type NetworkParam struct {
 	// NoAllowedAddressPairs disables creation of allowed address pairs for the network ports
 	NoAllowedAddressPairs bool `json:"noAllowedAddressPairs,omitempty"`
 	// PortTags allows users to specify a list of tags to add to ports created in a given network
-	PortTags []string `json:"portTags,omitempty"`
-	VNICType string   `json:"vnicType,omitempty"`
+	PortTags []string          `json:"portTags,omitempty"`
+	VNICType string            `json:"vnicType,omitempty"`
+	Profile  map[string]string `json:"profile,omitempty"`
 	// PortSecurity optionally enables or disables security on ports managed by OpenStack
 	PortSecurity *bool `json:"portSecurity,omitempty"`
 }
@@ -218,9 +220,17 @@ type PortOpts struct {
 	// neutron port.
 	VNICType string `json:"vnicType,omitempty"`
 
+	// A dictionary that enables the application running on the specified
+	// host to pass and receive virtual network interface (VIF) port-specific
+	// information to the plug-in.
+	Profile map[string]string `json:"profile,omitempty"`
+
 	// enable or disable security on a given port
 	// incompatible with securityGroups and allowedAddressPairs
 	PortSecurity *bool `json:"portSecurity,omitempty"`
+
+	// Enables and disables trunk at port level. If not provided, openStackMachine.Spec.Trunk is inherited.
+	Trunk *bool `json:"trunk,omitempty"`
 }
 
 type AddressPair struct {
@@ -247,6 +257,8 @@ type RootVolume struct {
 
 // OpenstackClusterProviderSpec is the providerSpec for OpenStack in the cluster object
 // +k8s:openapi-gen=true
+// Compatibility level 4: No compatibility is provided, the API can change at any point for any reason. These capabilities should not be used by applications needing long term support.
+// +openshift:compatibility-gen:level=4
 type OpenstackClusterProviderSpec struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -280,6 +292,8 @@ type OpenstackClusterProviderSpec struct {
 // OpenstackClusterProviderStatus contains the status fields
 // relevant to OpenStack in the cluster object.
 // +k8s:openapi-gen=true
+// Compatibility level 4: No compatibility is provided, the API can change at any point for any reason. These capabilities should not be used by applications needing long term support.
+// +openshift:compatibility-gen:level=4
 type OpenstackClusterProviderStatus struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -321,8 +335,24 @@ type Router struct {
 	ID   string `json:"id"`
 }
 
-func init() {
-	SchemeBuilder.Register(&OpenstackProviderSpec{})
-	SchemeBuilder.Register(&OpenstackClusterProviderSpec{})
-	SchemeBuilder.Register(&OpenstackClusterProviderStatus{})
+// SecurityGroup represents the basic information of the associated
+// OpenStack Neutron Security Group.
+type SecurityGroup struct {
+	Name  string              `json:"name"`
+	ID    string              `json:"id"`
+	Rules []SecurityGroupRule `json:"rules"`
+}
+
+// SecurityGroupRule represent the basic information of the associated OpenStack
+// Security Group Role.
+type SecurityGroupRule struct {
+	ID              string `json:"name"`
+	Direction       string `json:"direction"`
+	EtherType       string `json:"etherType"`
+	SecurityGroupID string `json:"securityGroupID"`
+	PortRangeMin    int    `json:"portRangeMin"`
+	PortRangeMax    int    `json:"portRangeMax"`
+	Protocol        string `json:"protocol"`
+	RemoteGroupID   string `json:"remoteGroupID"`
+	RemoteIPPrefix  string `json:"remoteIPPrefix"`
 }
