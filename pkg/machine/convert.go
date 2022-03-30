@@ -22,7 +22,7 @@ func NewOpenStackCluster(providerSpec *openstackconfigv1.OpenstackClusterProvide
 	}
 }
 
-func NewOpenStackMachine(machine *machinev1.Machine, apiVIP, ingressVIP string, networkService *networking.Service) (*capov1.OpenStackMachine, error) {
+func NewOpenStackMachine(machine *machinev1.Machine, apiVIP, ingressVIP string, networkService *networking.Service, instanceService *clients.InstanceService) (*capov1.OpenStackMachine, error) {
 	providerSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return nil, err
@@ -31,7 +31,7 @@ func NewOpenStackMachine(machine *machinev1.Machine, apiVIP, ingressVIP string, 
 	// In OpenShift CAPO we've added additional tags to OpenStack resources and we should maintain that behavior.
 	injectDefaultTags(providerSpec, machine)
 
-	machineSpec, err := providerSpecToMachineSpec(providerSpec, apiVIP, ingressVIP, networkService)
+	machineSpec, err := providerSpecToMachineSpec(providerSpec, apiVIP, ingressVIP, networkService, instanceService)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +253,7 @@ func injectDefaultTags(ps *openstackconfigv1.OpenstackProviderSpec, machine *mac
 	ps.Tags = append(ps.Tags, defaultTags...)
 }
 
-func providerSpecToMachineSpec(ps *openstackconfigv1.OpenstackProviderSpec, apiVIP, ingressVIP string, networkService *networking.Service) (capov1.OpenStackMachineSpec, error) {
+func providerSpecToMachineSpec(ps *openstackconfigv1.OpenstackProviderSpec, apiVIP, ingressVIP string, networkService *networking.Service, instanceService *clients.InstanceService) (capov1.OpenStackMachineSpec, error) {
 	machineSpec := capov1.OpenStackMachineSpec{
 		CloudName:      ps.CloudName,
 		Flavor:         ps.Flavor,
@@ -286,6 +286,26 @@ func providerSpecToMachineSpec(ps *openstackconfigv1.OpenstackProviderSpec, apiV
 		//              option definition this is always the name of the image and never the UUID.
 		//              We should allow UUID at some point and this will need an update.
 		machineSpec.Image = ps.RootVolume.SourceUUID
+	}
+
+	if ps.ServerGroupName != "" && ps.ServerGroupID == "" {
+		// We assume that all the hard cases are covered by validation so here it's a matter of checking
+		// for existence of server group and creating it if it doesn't exist.
+		serverGroups, err := instanceService.GetServerGroupsByName(ps.ServerGroupName)
+		if err != nil {
+			return capov1.OpenStackMachineSpec{}, err
+		}
+		if len(serverGroups) == 1 {
+			machineSpec.ServerGroupID = serverGroups[0].ID
+		} else if len(serverGroups) == 0 {
+			serverGroup, err := instanceService.CreateServerGroup(ps.ServerGroupName)
+			if err != nil {
+				return capov1.OpenStackMachineSpec{}, fmt.Errorf("Error when creating a server group: %v", err)
+			}
+			machineSpec.ServerGroupID = serverGroup.ID
+		} else {
+			return capov1.OpenStackMachineSpec{}, fmt.Errorf("More than one server group of name %s exists", ps.ServerGroupName)
+		}
 	}
 
 	for i, secGrp := range ps.SecurityGroups {
