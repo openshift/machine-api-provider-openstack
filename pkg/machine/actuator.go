@@ -89,7 +89,7 @@ func getOSCluster() capov1.OpenStackCluster {
 	// TODO(egarcia): if we ever use the cluster object, this will benifit from reading from it
 	var clusterSpec openstackconfigv1.OpenstackClusterProviderSpec
 
-	return openstackconfigv1.NewOpenStackCluster(clusterSpec, openstackconfigv1.OpenstackClusterProviderStatus{})
+	return NewOpenStackCluster(&clusterSpec, &openstackconfigv1.OpenstackClusterProviderStatus{})
 }
 
 func (oc *OpenstackClient) setProviderID(ctx context.Context, machine *machinev1.Machine, instanceID string) error {
@@ -137,7 +137,7 @@ func (oc *OpenstackClient) convertMachineToCapoV1(osc *openStackContext, machine
 	}
 
 	// Convert to capov1
-	osMachine, err := openstackconfigv1.NewOpenStackMachine(
+	osMachine, err := NewOpenStackMachine(
 		machine,
 		clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIP,
 		clusterInfra.Status.PlatformStatus.OpenStack.IngressIP,
@@ -159,7 +159,7 @@ func (oc *OpenstackClient) Update(ctx context.Context, machine *machinev1.Machin
 }
 
 func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Machine) error {
-	providerSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	providerSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return maoMachine.InvalidMachineConfiguration("Cannot unmarshal providerSpec for %s: %v", machine.Name, err)
 	}
@@ -404,7 +404,7 @@ func (oc *OpenstackClient) Exists(ctx context.Context, machine *machinev1.Machin
 }
 
 func (oc *OpenstackClient) validateMachine(machine *machinev1.Machine) error {
-	machineSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	machineSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return fmt.Errorf("\nError getting the machine spec from the provider spec: %v", err)
 	}
