@@ -23,6 +23,7 @@ import (
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/servergroups"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/utils/openstack/clientconfig"
 	azutils "github.com/gophercloud/utils/openstack/compute/v2/availabilityzones"
@@ -120,4 +121,48 @@ func (is *InstanceService) GetFlavorInfo(flavorID string) (flavor *flavors.Flavo
 
 func (is *InstanceService) GetFlavorID(flavorName string) (string, error) {
 	return flavorutils.IDFromName(is.computeClient, flavorName)
+}
+
+func (is *InstanceService) CreateServerGroup(name string) (*servergroups.ServerGroup, error) {
+	// Microversion "2.15" is the first that supports "soft"-anti-affinity.
+	// Microversions starting from "2.64" accept policies as a string
+	// instead of an array.
+	defer func(microversion string) {
+		is.computeClient.Microversion = microversion
+	}(is.computeClient.Microversion)
+	is.computeClient.Microversion = "2.15"
+
+	return servergroups.Create(is.computeClient, &servergroups.CreateOpts{
+		Name:     name,
+		Policies: []string{"soft-anti-affinity"},
+	}).Extract()
+}
+
+func (is *InstanceService) GetServerGroupsByName(name string) ([]servergroups.ServerGroup, error) {
+	pages, err := servergroups.List(is.computeClient, servergroups.ListOpts{}).AllPages()
+	if err != nil {
+		return nil, err
+	}
+
+	allServerGroups, err := servergroups.ExtractServerGroups(pages)
+	if err != nil {
+		return nil, err
+	}
+
+	serverGroups := make([]servergroups.ServerGroup, 0, len(allServerGroups))
+	for _, serverGroup := range allServerGroups {
+		if serverGroup.Name == name {
+			serverGroups = append(serverGroups, serverGroup)
+		}
+	}
+
+	return serverGroups, nil
+}
+
+func (is *InstanceService) GetServerGroupByID(id string) (*servergroups.ServerGroup, error) {
+	servergroup, err := servergroups.Get(is.computeClient, id).Extract()
+	if err != nil {
+		return nil, err
+	}
+	return servergroup, nil
 }

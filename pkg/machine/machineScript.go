@@ -25,6 +25,7 @@ import (
 
 	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 	"github.com/openshift/machine-api-provider-openstack/pkg/bootstrap"
+	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 
 	clconfig "github.com/coreos/container-linux-config-transpiler/config"
 	machinev1 "github.com/openshift/api/machine/v1beta1"
@@ -49,7 +50,7 @@ func init() {
 }
 
 func masterStartupScript(machine *machinev1.Machine, script string) (string, error) {
-	machineSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	machineSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return "", err
 	}
@@ -69,7 +70,7 @@ func masterStartupScript(machine *machinev1.Machine, script string) (string, err
 }
 
 func nodeStartupScript(machine *machinev1.Machine, token, script string) (string, error) {
-	machineSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	machineSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return "", err
 	}

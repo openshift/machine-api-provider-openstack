@@ -89,7 +89,7 @@ func getOSCluster() capov1.OpenStackCluster {
 	// TODO(egarcia): if we ever use the cluster object, this will benifit from reading from it
 	var clusterSpec openstackconfigv1.OpenstackClusterProviderSpec
 
-	return openstackconfigv1.NewOpenStackCluster(clusterSpec, openstackconfigv1.OpenstackClusterProviderStatus{})
+	return NewOpenStackCluster(&clusterSpec, &openstackconfigv1.OpenstackClusterProviderStatus{})
 }
 
 func (oc *OpenstackClient) setProviderID(ctx context.Context, machine *machinev1.Machine, instanceID string) error {
@@ -136,12 +136,17 @@ func (oc *OpenstackClient) convertMachineToCapoV1(osc *openStackContext, machine
 		return nil, err
 	}
 
+	instanceService, err := clients.NewInstanceServiceFromMachine(oc.params.KubeClient, machine)
+	if err != nil {
+		return nil, err
+	}
+
 	// Convert to capov1
-	osMachine, err := openstackconfigv1.NewOpenStackMachine(
+	osMachine, err := NewOpenStackMachine(
 		machine,
 		clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIP,
 		clusterInfra.Status.PlatformStatus.OpenStack.IngressIP,
-		networkService,
+		networkService, instanceService,
 	)
 	if err != nil {
 		return nil, err
@@ -159,7 +164,7 @@ func (oc *OpenstackClient) Update(ctx context.Context, machine *machinev1.Machin
 }
 
 func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Machine) error {
-	providerSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	providerSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return maoMachine.InvalidMachineConfiguration("Cannot unmarshal providerSpec for %s: %v", machine.Name, err)
 	}
@@ -404,7 +409,7 @@ func (oc *OpenstackClient) Exists(ctx context.Context, machine *machinev1.Machin
 }
 
 func (oc *OpenstackClient) validateMachine(machine *machinev1.Machine) error {
-	machineSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	machineSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return fmt.Errorf("\nError getting the machine spec from the provider spec: %v", err)
 	}
@@ -434,6 +439,30 @@ func (oc *OpenstackClient) validateMachine(machine *machinev1.Machine) error {
 	err = machineService.DoesAvailabilityZoneExist(machineSpec.AvailabilityZone)
 	if err != nil {
 		return err
+	}
+
+	// Check that server group exists or values aren't inconsistent
+	if machineSpec.ServerGroupID != "" && machineSpec.ServerGroupName != "" {
+		serverGroup, err := machineService.GetServerGroupByID(machineSpec.ServerGroupID)
+		if err != nil {
+			return fmt.Errorf("\nError when looking up server group with ID %s: %v", machineSpec.ServerGroupID, err)
+		}
+		if serverGroup.Name != machineSpec.ServerGroupName {
+			return fmt.Errorf("\nName of a %s server group does not match defined name %s", machineSpec.ServerGroupID, machineSpec.ServerGroupName)
+		}
+	} else if machineSpec.ServerGroupID != "" {
+		_, err := machineService.GetServerGroupByID(machineSpec.ServerGroupID)
+		if err != nil {
+			return fmt.Errorf("\nError when looking up server group with ID %s: %v", machineSpec.ServerGroupID, err)
+		}
+	} else if machineSpec.ServerGroupName != "" {
+		serverGroups, err := machineService.GetServerGroupsByName(machineSpec.ServerGroupName)
+		if err != nil {
+			return err
+		}
+		if len(serverGroups) > 1 {
+			return fmt.Errorf("\n%d server groups named %s exist", len(serverGroups), machineSpec.ServerGroupName)
+		}
 	}
 
 	return nil

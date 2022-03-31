@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 
 	"github.com/go-logr/logr"
@@ -95,7 +94,7 @@ func requeueTime() time.Duration {
 	return RefreshFailureTime / 2
 }
 func (r *Reconciler) reconcile(machineSet *machinev1.MachineSet) (ctrlRuntime.Result, error) {
-	pSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machineSet.Spec.Template.Spec.ProviderSpec)
+	pSpec, err := clients.MachineSpecFromProviderSpec(machineSet.Spec.Template.Spec.ProviderSpec)
 	if err != nil {
 		return ctrlRuntime.Result{}, fmt.Errorf("failed to get OpenStackProviderSpec from machineset: %v", err)
 	}
