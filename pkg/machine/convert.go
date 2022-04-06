@@ -8,6 +8,7 @@ import (
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 	"github.com/openshift/machine-api-provider-openstack/pkg/utils"
 	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1"
+	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
 
 	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
@@ -20,33 +21,6 @@ func NewOpenStackCluster(providerSpec *openstackconfigv1.OpenstackClusterProvide
 		Spec:   clusterProviderSpecToClusterSpec(providerSpec),
 		Status: clusterProviderStatusToClusterStatus(providerStatus),
 	}
-}
-
-func NewOpenStackMachine(machine *machinev1.Machine, apiVIP, ingressVIP string, networkService *networking.Service, instanceService *clients.InstanceService) (*capov1.OpenStackMachine, error) {
-	providerSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
-	if err != nil {
-		return nil, err
-	}
-
-	// In OpenShift CAPO we've added additional tags to OpenStack resources and we should maintain that behavior.
-	injectDefaultTags(providerSpec, machine)
-
-	machineSpec, err := providerSpecToMachineSpec(providerSpec, apiVIP, ingressVIP, networkService, instanceService)
-	if err != nil {
-		return nil, err
-	}
-
-	osMachine := &capov1.OpenStackMachine{
-		ObjectMeta: machine.ObjectMeta,
-		Spec:       machineSpec,
-	}
-
-	// if machine api master label exists, add v1beta control plane label to the node
-	if osMachine.ObjectMeta.Labels["machine.openshift.io/cluster-api-machine-role"] == "master" {
-		osMachine.ObjectMeta.Labels["cluster.x-k8s.io/control-plane"] = ""
-	}
-
-	return osMachine, nil
 }
 
 func clusterProviderSpecToClusterSpec(cps *openstackconfigv1.OpenstackClusterProviderSpec) capov1.OpenStackClusterSpec {
@@ -253,29 +227,29 @@ func injectDefaultTags(ps *openstackconfigv1.OpenstackProviderSpec, machine *mac
 	ps.Tags = append(ps.Tags, defaultTags...)
 }
 
-func providerSpecToMachineSpec(ps *openstackconfigv1.OpenstackProviderSpec, apiVIP, ingressVIP string, networkService *networking.Service, instanceService *clients.InstanceService) (capov1.OpenStackMachineSpec, error) {
-	machineSpec := capov1.OpenStackMachineSpec{
-		CloudName:      ps.CloudName,
-		Flavor:         ps.Flavor,
+func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userData string, networkService *networking.Service, instanceService *clients.InstanceService) (*compute.InstanceSpec, error) {
+	ps, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	if err != nil {
+		return nil, err
+	}
+
+	instanceSpec := compute.InstanceSpec{
+		Name:           machine.Name,
 		Image:          ps.Image,
+		Flavor:         ps.Flavor,
 		SSHKeyName:     ps.KeyName,
-		Networks:       make([]capov1.NetworkParam, len(ps.Networks)),
-		Ports:          make([]capov1.PortOpts, len(ps.Ports)),
-		FloatingIP:     ps.FloatingIP,
-		SecurityGroups: make([]capov1.SecurityGroupParam, len(ps.SecurityGroups)),
-		Trunk:          ps.Trunk,
-		Tags:           ps.Tags,
-		ServerMetadata: ps.ServerMetadata,
-		ConfigDrive:    ps.ConfigDrive,
+		UserData:       userData,
+		Metadata:       ps.ServerMetadata,
+		ConfigDrive:    ps.ConfigDrive != nil && *ps.ConfigDrive,
+		FailureDomain:  ps.AvailabilityZone,
 		ServerGroupID:  ps.ServerGroupID,
-		IdentityRef: &capov1.OpenStackIdentityReference{
-			Kind: "secret",
-			Name: ps.CloudsSecret.Name,
-		},
+		Trunk:          ps.Trunk,
+		Ports:          make([]capov1.PortOpts, 0, len(ps.Ports)+len(ps.Networks)),
+		SecurityGroups: make([]capov1.SecurityGroupParam, len(ps.SecurityGroups)),
 	}
 
 	if ps.RootVolume != nil {
-		machineSpec.RootVolume = &capov1.RootVolume{
+		instanceSpec.RootVolume = &capov1.RootVolume{
 			Size:             ps.RootVolume.Size,
 			VolumeType:       ps.RootVolume.VolumeType,
 			AvailabilityZone: ps.RootVolume.Zone,
@@ -285,7 +259,7 @@ func providerSpecToMachineSpec(ps *openstackconfigv1.OpenstackProviderSpec, apiV
 		//              populate ps.RootVolume.SourceUUID. Moreover, according to the ClusterOSImage
 		//              option definition this is always the name of the image and never the UUID.
 		//              We should allow UUID at some point and this will need an update.
-		machineSpec.Image = ps.RootVolume.SourceUUID
+		instanceSpec.Image = ps.RootVolume.SourceUUID
 	}
 
 	if ps.ServerGroupName != "" && ps.ServerGroupID == "" {
@@ -293,31 +267,31 @@ func providerSpecToMachineSpec(ps *openstackconfigv1.OpenstackProviderSpec, apiV
 		// for existence of server group and creating it if it doesn't exist.
 		serverGroups, err := instanceService.GetServerGroupsByName(ps.ServerGroupName)
 		if err != nil {
-			return capov1.OpenStackMachineSpec{}, err
+			return nil, err
 		}
 		if len(serverGroups) == 1 {
-			machineSpec.ServerGroupID = serverGroups[0].ID
+			instanceSpec.ServerGroupID = serverGroups[0].ID
 		} else if len(serverGroups) == 0 {
 			serverGroup, err := instanceService.CreateServerGroup(ps.ServerGroupName)
 			if err != nil {
-				return capov1.OpenStackMachineSpec{}, fmt.Errorf("Error when creating a server group: %v", err)
+				return nil, fmt.Errorf("Error when creating a server group: %v", err)
 			}
-			machineSpec.ServerGroupID = serverGroup.ID
+			instanceSpec.ServerGroupID = serverGroup.ID
 		} else {
-			return capov1.OpenStackMachineSpec{}, fmt.Errorf("More than one server group of name %s exists", ps.ServerGroupName)
+			return nil, fmt.Errorf("More than one server group of name %s exists", ps.ServerGroupName)
 		}
 	}
 
 	for i, secGrp := range ps.SecurityGroups {
-		machineSpec.SecurityGroups[i] = capov1.SecurityGroupParam{
+		instanceSpec.SecurityGroups[i] = capov1.SecurityGroupParam{
 			UUID:   secGrp.UUID,
 			Name:   secGrp.Name,
 			Filter: capov1.SecurityGroupFilter(secGrp.Filter),
 		}
 	}
 
-	for i, port := range ps.Ports {
-		machineSpec.Ports[i] = capov1.PortOpts{
+	for _, port := range ps.Ports {
+		capoPort := capov1.PortOpts{
 			Network:             &capov1.NetworkFilter{ID: port.NetworkID},
 			NameSuffix:          port.NameSuffix,
 			Description:         port.Description,
@@ -333,27 +307,25 @@ func providerSpecToMachineSpec(ps *openstackconfigv1.OpenstackProviderSpec, apiV
 		}
 
 		for fixedIPindex, fixedIP := range port.FixedIPs {
-			machineSpec.Ports[i].FixedIPs[fixedIPindex] = capov1.FixedIP{
+			capoPort.FixedIPs[fixedIPindex] = capov1.FixedIP{
 				Subnet:    &capov1.SubnetFilter{ID: fixedIP.SubnetID},
 				IPAddress: fixedIP.IPAddress,
 			}
 		}
 
 		for addrPairIndex, addrPair := range port.AllowedAddressPairs {
-			machineSpec.Ports[i].AllowedAddressPairs[addrPairIndex] = capov1.AddressPair(addrPair)
+			capoPort.AllowedAddressPairs[addrPairIndex] = capov1.AddressPair(addrPair)
 		}
+		instanceSpec.Ports = append(instanceSpec.Ports, capoPort)
 	}
 
-	portList := []capov1.PortOpts{}
 	for _, network := range ps.Networks {
 		ports, err := networkParamToCapov1PortOpt(&network, apiVIP, ingressVIP, &ps.Trunk, networkService)
 		if err != nil {
-			return capov1.OpenStackMachineSpec{}, err
+			return nil, err
 		}
-		portList = append(portList, ports...)
+		instanceSpec.Ports = append(instanceSpec.Ports, ports...)
 	}
 
-	machineSpec.Ports = append(machineSpec.Ports, portList...)
-
-	return machineSpec, nil
+	return &instanceSpec, nil
 }

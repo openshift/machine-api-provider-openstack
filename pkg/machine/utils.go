@@ -21,6 +21,7 @@ import (
 	"github.com/gophercloud/utils/openstack/clientconfig"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
+	"sigs.k8s.io/cluster-api-provider-openstack/pkg/scope"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -38,9 +39,16 @@ func clientOptsForCloud(cloud *clientconfig.Cloud) *clientconfig.ClientOpts {
 	}
 }
 
+func (osc *openStackContext) scope() *scope.Scope {
+	return &scope.Scope{
+		ProviderClient:     osc.provider,
+		ProviderClientOpts: clientOptsForCloud(osc.cloud),
+		Logger:             ctrl.Log.WithName("cluster-api-provider-openstack")}
+}
+
 func (osc *openStackContext) getComputeService() (*compute.Service, error) {
 	if osc.computeService == nil {
-		computeService, err := compute.NewService(osc.provider, clientOptsForCloud(osc.cloud), ctrl.Log.WithName("capo-compute"))
+		computeService, err := compute.NewService(osc.scope())
 		if err != nil {
 			return nil, err
 		}
@@ -51,7 +59,7 @@ func (osc *openStackContext) getComputeService() (*compute.Service, error) {
 
 func (osc *openStackContext) getNetworkService() (*networking.Service, error) {
 	if osc.networkService == nil {
-		networkService, err := networking.NewService(osc.provider, clientOptsForCloud(osc.cloud), ctrl.Log.WithName("capo-network"))
+		networkService, err := networking.NewService(osc.scope())
 		if err != nil {
 			return nil, err
 		}
