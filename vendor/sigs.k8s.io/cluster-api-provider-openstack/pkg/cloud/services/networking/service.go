@@ -18,16 +18,17 @@ package networking
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/go-logr/logr"
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/attributestags"
-	"github.com/gophercloud/utils/openstack/clientconfig"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/provider"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
+	"sigs.k8s.io/cluster-api-provider-openstack/pkg/scope"
 )
 
 const (
@@ -40,32 +41,32 @@ const (
 // It will create a network related infrastructure for the cluster, like network, subnet, router, security groups.
 type Service struct {
 	projectID string
+	scope     *scope.Scope
 	client    NetworkClient
-	logger    logr.Logger
 }
 
 // NewService returns an instance of the networking service.
-func NewService(providerClient *gophercloud.ProviderClient, clientOpts *clientconfig.ClientOpts, logger logr.Logger) (*Service, error) {
-	serviceClient, err := openstack.NewNetworkV2(providerClient, gophercloud.EndpointOpts{
-		Region: clientOpts.RegionName,
+func NewService(scope *scope.Scope) (*Service, error) {
+	serviceClient, err := openstack.NewNetworkV2(scope.ProviderClient, gophercloud.EndpointOpts{
+		Region: scope.ProviderClientOpts.RegionName,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create networking service providerClient: %v", err)
 	}
 
-	if clientOpts.AuthInfo == nil {
+	if scope.ProviderClientOpts.AuthInfo == nil {
 		return nil, fmt.Errorf("failed to get project id: authInfo must be set")
 	}
 
-	projectID, err := provider.GetProjectID(providerClient, clientOpts)
+	projectID, err := provider.GetProjectID(scope.ProviderClient, scope.ProviderClientOpts)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieveing project id: %v", err)
 	}
 
 	return &Service{
 		projectID: projectID,
+		scope:     scope,
 		client:    networkClient{serviceClient},
-		logger:    logger,
 	}, nil
 }
 
@@ -73,8 +74,10 @@ func NewService(providerClient *gophercloud.ProviderClient, clientOpts *clientco
 func NewTestService(projectID string, client NetworkClient, logger logr.Logger) *Service {
 	return &Service{
 		projectID: projectID,
-		client:    client,
-		logger:    logger,
+		scope: &scope.Scope{
+			Logger: logger,
+		},
+		client: client,
 	}
 }
 
@@ -82,22 +85,35 @@ func NewTestService(projectID string, client NetworkClient, logger logr.Logger) 
 // the value of resourceType must match one of the allowed constants: trunkResource or portResource.
 func (s *Service) replaceAllAttributesTags(eventObject runtime.Object, resourceType string, resourceID string, tags []string) error {
 	if len(tags) == 0 {
-		s.logger.Info("no tags provided to ReplaceAllAttributesTags", "resourceType", resourceType, "resourceID", resourceID)
+		s.scope.Logger.Info("no tags provided to ReplaceAllAttributesTags", "resourceType", resourceType, "resourceID", resourceID)
 		return nil
 	}
 	if resourceType != trunkResource && resourceType != portResource {
 		record.Warnf(eventObject, "FailedReplaceAllAttributesTags", "Invalid resourceType argument in function call")
 		panic(fmt.Errorf("invalid argument: resourceType, %s, does not match allowed arguments: %s or %s", resourceType, trunkResource, portResource))
 	}
+	// remove duplicate values from tags
+	tagsMap := make(map[string]string)
+	for _, t := range tags {
+		tagsMap[t] = t
+	}
+
+	uniqueTags := []string{}
+	for k := range tagsMap {
+		uniqueTags = append(uniqueTags, k)
+	}
+
+	// Sort the tags so that we always get fixed order of tags to make UT easier
+	sort.Strings(uniqueTags)
 
 	_, err := s.client.ReplaceAllAttributesTags(resourceType, resourceID, attributestags.ReplaceAllOpts{
-		Tags: tags,
+		Tags: uniqueTags,
 	})
 	if err != nil {
 		record.Warnf(eventObject, "FailedReplaceAllAttributesTags", "Failed to replace all attributestags, %s: %v", resourceID, err)
 		return err
 	}
 
-	record.Eventf(eventObject, "SuccessfulReplaceAllAttributeTags", "Replaced all attributestags for %s with tags %s", resourceID, tags)
+	record.Eventf(eventObject, "SuccessfulReplaceAllAttributeTags", "Replaced all attributestags for %s with tags %s", resourceID, uniqueTags)
 	return nil
 }

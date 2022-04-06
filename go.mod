@@ -17,8 +17,8 @@ require (
 	k8s.io/client-go v0.23.0
 	k8s.io/cluster-bootstrap v0.23.1
 	k8s.io/klog/v2 v2.30.0
-	sigs.k8s.io/cluster-api v1.0.2
-	sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20220113110629-19889578bf84
+	sigs.k8s.io/cluster-api v1.1.0
+	sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20220401180447-6ba04de45920
 	sigs.k8s.io/controller-runtime v0.11.0
 	sigs.k8s.io/yaml v1.3.0
 )
@@ -46,7 +46,7 @@ require (
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/jsonreference v0.19.5 // indirect
 	github.com/go-openapi/swag v0.19.14 // indirect
-	github.com/gobuffalo/flect v0.2.3 // indirect
+	github.com/gobuffalo/flect v0.2.4 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/mock v1.6.0 // indirect
@@ -90,7 +90,7 @@ require (
 	go.starlark.net v0.0.0-20200306205701-8dd3e2ee1dd5 // indirect
 	go4.org v0.0.0-20191010144846-132d2879e1e9 // indirect
 	golang.org/x/net v0.0.0-20211209124913-491a49abca63 // indirect
-	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f // indirect
+	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8 // indirect
 	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9 // indirect
 	golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b // indirect
 	golang.org/x/text v0.3.7 // indirect
@@ -116,5 +116,5 @@ require (
 
 replace (
 	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.0.2
-	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220113110629-19889578bf84
+	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220401180447-6ba04de45920
 )

@@ -98,7 +98,6 @@ type OpenStackMachineSpec struct {
 
 // OpenStackMachineStatus defines the observed state of OpenStackMachine.
 type OpenStackMachineStatus struct {
-
 	// Ready is true when the provider resource is ready.
 	// +optional
 	Ready bool `json:"ready"`
@@ -110,7 +109,7 @@ type OpenStackMachineStatus struct {
 	// +optional
 	InstanceState *InstanceState `json:"instanceState,omitempty"`
 
-	FailureReason *errors.MachineStatusError `json:"errorReason,omitempty"`
+	FailureReason *errors.MachineStatusError `json:"failureReason,omitempty"`
 
 	// FailureMessage will be set in the event that there is a terminal problem
 	// reconciling the Machine and will contain a more verbose string suitable
@@ -129,7 +128,7 @@ type OpenStackMachineStatus struct {
 	// can be added as events to the Machine object and/or logged in the
 	// controller's output.
 	// +optional
-	FailureMessage *string `json:"errorMessage,omitempty"`
+	FailureMessage *string `json:"failureMessage,omitempty"`
 }
 
 // +kubebuilder:object:root=true
