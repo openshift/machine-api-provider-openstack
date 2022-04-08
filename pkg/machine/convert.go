@@ -159,6 +159,7 @@ func networkParamToCapov1PortOpt(net *openstackconfigv1.NetworkParam, apiVIP, in
 				VNICType:            net.VNICType,
 				FixedIPs:            fixedIP,
 				Tags:                portTags,
+				Profile:             net.Profile,
 			}
 
 			// Fetch the UUID of the network subnet is attached to or the conversion will fail
@@ -307,6 +308,8 @@ func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userD
 			AllowedAddressPairs: make([]capov1.AddressPair, len(port.AllowedAddressPairs)),
 			HostID:              port.HostID,
 			VNICType:            port.VNICType,
+			Profile:             port.Profile,
+			Trunk:               port.Trunk,
 		}
 
 		for fixedIPindex, fixedIP := range port.FixedIPs {
