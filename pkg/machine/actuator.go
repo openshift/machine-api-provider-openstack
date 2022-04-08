@@ -27,6 +27,7 @@ import (
 
 	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
+	capoRecorder "sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
 
 	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
@@ -64,6 +65,8 @@ type OpenstackClient struct {
 }
 
 func NewActuator(params ActuatorParams) (*OpenstackClient, error) {
+	capoRecorder.InitFromRecorder(params.EventRecorder)
+
 	return &OpenstackClient{
 		params:        params,
 		client:        params.Client,

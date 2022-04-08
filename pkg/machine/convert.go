@@ -219,12 +219,12 @@ func networkParamToCapov1PortOpt(net *openstackconfigv1.NetworkParam, apiVIP, in
 	return ports, nil
 }
 
-func injectDefaultTags(ps *openstackconfigv1.OpenstackProviderSpec, machine *machinev1.Machine) {
+func injectDefaultTags(instanceSpec *compute.InstanceSpec, machine *machinev1.Machine) {
 	defaultTags := []string{
 		"cluster-api-provider-openstack",
 		utils.GetClusterNameWithNamespace(machine),
 	}
-	ps.Tags = append(ps.Tags, defaultTags...)
+	instanceSpec.Tags = append(instanceSpec.Tags, defaultTags...)
 }
 
 func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userData string, networkService *networking.Service, instanceService *clients.InstanceService) (*compute.InstanceSpec, error) {
@@ -247,6 +247,8 @@ func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userD
 		Ports:          make([]capov1.PortOpts, 0, len(ps.Ports)+len(ps.Networks)),
 		SecurityGroups: make([]capov1.SecurityGroupParam, len(ps.SecurityGroups)),
 	}
+
+	injectDefaultTags(&instanceSpec, machine)
 
 	if ps.RootVolume != nil {
 		instanceSpec.RootVolume = &capov1.RootVolume{
