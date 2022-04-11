@@ -353,7 +353,9 @@ func providerSpecToMachineSpec(ps *openstackconfigv1.OpenstackProviderSpec, apiV
 		portList = append(portList, ports...)
 	}
 
-	machineSpec.Ports = append(machineSpec.Ports, portList...)
+	// The order of the networks is important, first network is the one that will be used for kubelet when
+	// the legacy cloud provider is used. Once we switch to using CCM by default, the order won't matter.
+	machineSpec.Ports = append(portList, machineSpec.Ports...)
 
 	return machineSpec, nil
 }
