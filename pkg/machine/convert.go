@@ -159,6 +159,7 @@ func networkParamToCapov1PortOpt(net *openstackconfigv1.NetworkParam, apiVIP, in
 				VNICType:            net.VNICType,
 				FixedIPs:            fixedIP,
 				Tags:                portTags,
+				Profile:             net.Profile,
 			}
 
 			// Fetch the UUID of the network subnet is attached to or the conversion will fail
@@ -293,6 +294,16 @@ func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userD
 		}
 	}
 
+	// The order of the networks is important, first network is the one that will be used for kubelet when
+	// the legacy cloud provider is used. Once we switch to using CCM by default, the order won't matter.
+	for _, network := range ps.Networks {
+		ports, err := networkParamToCapov1PortOpt(&network, apiVIP, ingressVIP, &ps.Trunk, networkService)
+		if err != nil {
+			return nil, err
+		}
+		instanceSpec.Ports = append(instanceSpec.Ports, ports...)
+	}
+
 	for _, port := range ps.Ports {
 		capoPort := capov1.PortOpts{
 			Network:             &capov1.NetworkFilter{ID: port.NetworkID},
@@ -307,6 +318,8 @@ func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userD
 			AllowedAddressPairs: make([]capov1.AddressPair, len(port.AllowedAddressPairs)),
 			HostID:              port.HostID,
 			VNICType:            port.VNICType,
+			Profile:             port.Profile,
+			Trunk:               port.Trunk,
 		}
 
 		for fixedIPindex, fixedIP := range port.FixedIPs {
@@ -320,14 +333,6 @@ func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userD
 			capoPort.AllowedAddressPairs[addrPairIndex] = capov1.AddressPair(addrPair)
 		}
 		instanceSpec.Ports = append(instanceSpec.Ports, capoPort)
-	}
-
-	for _, network := range ps.Networks {
-		ports, err := networkParamToCapov1PortOpt(&network, apiVIP, ingressVIP, &ps.Trunk, networkService)
-		if err != nil {
-			return nil, err
-		}
-		instanceSpec.Ports = append(instanceSpec.Ports, ports...)
 	}
 
 	return &instanceSpec, nil
