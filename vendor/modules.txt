@@ -86,7 +86,7 @@ github.com/go-openapi/jsonreference
 # github.com/go-openapi/swag v0.19.14
 ## explicit; go 1.11
 github.com/go-openapi/swag
-# github.com/gobuffalo/flect v0.2.3
+# github.com/gobuffalo/flect v0.2.4
 ## explicit; go 1.13
 github.com/gobuffalo/flect
 # github.com/gogo/protobuf v1.3.2
@@ -362,7 +362,7 @@ golang.org/x/net/http/httpguts
 golang.org/x/net/http2
 golang.org/x/net/http2/hpack
 golang.org/x/net/idna
-# golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f
+# golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 ## explicit; go 1.11
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
@@ -377,6 +377,7 @@ golang.org/x/sys/windows
 golang.org/x/term
 # golang.org/x/text v0.3.7
 ## explicit; go 1.17
+golang.org/x/text/cases
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
 golang.org/x/text/encoding/htmlindex
@@ -387,6 +388,7 @@ golang.org/x/text/encoding/korean
 golang.org/x/text/encoding/simplifiedchinese
 golang.org/x/text/encoding/traditionalchinese
 golang.org/x/text/encoding/unicode
+golang.org/x/text/internal
 golang.org/x/text/internal/language
 golang.org/x/text/internal/language/compact
 golang.org/x/text/internal/tag
@@ -758,21 +760,22 @@ k8s.io/utils/internal/third_party/forked/golang/net
 k8s.io/utils/net
 k8s.io/utils/pointer
 k8s.io/utils/trace
-# sigs.k8s.io/cluster-api v1.0.2 => sigs.k8s.io/cluster-api v1.0.2
+# sigs.k8s.io/cluster-api v1.1.0 => sigs.k8s.io/cluster-api v1.0.2
 ## explicit; go 1.16
 sigs.k8s.io/cluster-api/api/v1beta1
 sigs.k8s.io/cluster-api/errors
 sigs.k8s.io/cluster-api/feature
 sigs.k8s.io/cluster-api/util
 sigs.k8s.io/cluster-api/util/version
-# sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20220113110629-19889578bf84 => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220113110629-19889578bf84
-## explicit; go 1.16
+# sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20220401180447-6ba04de45920 => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220401180447-6ba04de45920
+## explicit; go 1.17
 sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1
 sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute
 sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking
 sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/provider
 sigs.k8s.io/cluster-api-provider-openstack/pkg/metrics
 sigs.k8s.io/cluster-api-provider-openstack/pkg/record
+sigs.k8s.io/cluster-api-provider-openstack/pkg/scope
 sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/errors
 sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/names
 # sigs.k8s.io/controller-runtime v0.11.0
@@ -919,4 +922,4 @@ sigs.k8s.io/structured-merge-diff/v4/value
 ## explicit; go 1.12
 sigs.k8s.io/yaml
 # sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.0.2
-# sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220113110629-19889578bf84
+# sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220401180447-6ba04de45920
