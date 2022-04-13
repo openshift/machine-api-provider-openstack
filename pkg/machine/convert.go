@@ -240,6 +240,7 @@ func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userD
 		SSHKeyName:     ps.KeyName,
 		UserData:       userData,
 		Metadata:       ps.ServerMetadata,
+		Tags:           ps.Tags,
 		ConfigDrive:    ps.ConfigDrive != nil && *ps.ConfigDrive,
 		FailureDomain:  ps.AvailabilityZone,
 		ServerGroupID:  ps.ServerGroupID,
