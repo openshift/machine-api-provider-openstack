@@ -23,7 +23,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/security/groups"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/security/rules"
 
-	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1"
+	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha5"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
 )
 
@@ -404,7 +404,7 @@ func (s *Service) GetSecurityGroups(securityGroupParams []infrav1.SecurityGroupP
 
 		listOpts := groups.ListOpts(sg.Filter)
 		if listOpts.ProjectID == "" {
-			listOpts.ProjectID = s.projectID
+			listOpts.ProjectID = s.scope.ProjectID
 		}
 		listOpts.Name = sg.Name
 		listOpts.ID = sg.UUID
