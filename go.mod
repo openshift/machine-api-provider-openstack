@@ -17,9 +17,8 @@ require (
 	k8s.io/client-go v0.23.0
 	k8s.io/cluster-bootstrap v0.23.1
 	k8s.io/klog/v2 v2.30.0
-	sigs.k8s.io/cluster-api v1.1.0
 	sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20220401180447-6ba04de45920
-	sigs.k8s.io/controller-runtime v0.11.0
+	sigs.k8s.io/controller-runtime v0.11.1
 	sigs.k8s.io/yaml v1.3.0
 )
 
@@ -28,15 +27,15 @@ require (
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
 	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
-	github.com/ajeddeloh/go-json v0.0.0-20170920214419-6a2fe990e083 // indirect
+	github.com/ajeddeloh/go-json v0.0.0-20200220154158-5ae607161559 // indirect
 	github.com/ajeddeloh/yaml v0.0.0-20170912190910-6b94386aeefd // indirect
-	github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d // indirect
+	github.com/alecthomas/units v0.0.0-20210208195552-ff826a37aa15 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/chai2010/gettext-go v0.0.0-20160711120539-c6fed771bfd5 // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
-	github.com/coreos/go-systemd v0.0.0-20190620071333-e64a0ec8b42a // indirect
+	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf // indirect
 	github.com/coreos/ignition v0.33.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
@@ -85,10 +84,10 @@ require (
 	github.com/spf13/cobra v1.2.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
-	github.com/vincent-petithory/dataurl v0.0.0-20160330182126-9a301d65acbb // indirect
+	github.com/vincent-petithory/dataurl v1.0.0 // indirect
 	github.com/xlab/treeprint v0.0.0-20181112141820-a009c3971eca // indirect
 	go.starlark.net v0.0.0-20200306205701-8dd3e2ee1dd5 // indirect
-	go4.org v0.0.0-20191010144846-132d2879e1e9 // indirect
+	go4.org v0.0.0-20201209231011-d4a079459e60 // indirect
 	golang.org/x/net v0.0.0-20211209124913-491a49abca63 // indirect
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8 // indirect
 	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9 // indirect
@@ -108,6 +107,7 @@ require (
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65 // indirect
 	k8s.io/kubectl v0.23.0 // indirect
 	k8s.io/utils v0.0.0-20211208161948-7d6a63dca704 // indirect
+	sigs.k8s.io/cluster-api v1.1.3 // indirect
 	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
 	sigs.k8s.io/kustomize/api v0.10.1 // indirect
 	sigs.k8s.io/kustomize/kyaml v0.13.0 // indirect
@@ -115,6 +115,6 @@ require (
 )
 
 replace (
-	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.0.2
-	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220401180447-6ba04de45920
+	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.1.3
+	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220428093657-523f6d703620
 )

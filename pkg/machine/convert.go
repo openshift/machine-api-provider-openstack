@@ -7,7 +7,7 @@ import (
 	machinev1 "github.com/openshift/api/machine/v1beta1"
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 	"github.com/openshift/machine-api-provider-openstack/pkg/utils"
-	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1"
+	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha5"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
 

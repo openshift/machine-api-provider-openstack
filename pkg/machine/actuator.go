@@ -25,7 +25,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 
-	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta1"
+	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha5"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 	capoRecorder "sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
 
