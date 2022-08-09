@@ -8,13 +8,12 @@ import (
 	"testing"
 	"time"
 
-	machineproviderv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
-
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	gtypes "github.com/onsi/gomega/types"
+	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1 "github.com/openshift/api/machine/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -308,7 +307,7 @@ func newTestMachineSet(namespace string, flavor string, existingAnnotations map[
 		annotations[k] = v
 	}
 
-	machineProviderSpec := &machineproviderv1.OpenstackProviderSpec{
+	machineProviderSpec := &machinev1alpha1.OpenstackProviderSpec{
 		Flavor:    flavor,
 		CloudName: "openstack",
 		CloudsSecret: &corev1.SecretReference{
@@ -338,7 +337,7 @@ func newTestMachineSet(namespace string, flavor string, existingAnnotations map[
 	}, nil
 }
 
-func providerSpecFromMachine(in *machineproviderv1.OpenstackProviderSpec) (machinev1.ProviderSpec, error) {
+func providerSpecFromMachine(in *machinev1alpha1.OpenstackProviderSpec) (machinev1.ProviderSpec, error) {
 	bytes, err := json.Marshal(in)
 	if err != nil {
 		return machinev1.ProviderSpec{}, err

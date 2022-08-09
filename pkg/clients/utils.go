@@ -11,10 +11,9 @@ import (
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/utils/openstack/clientconfig"
+	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1 "github.com/openshift/api/machine/v1beta1"
 	"sigs.k8s.io/yaml"
-
-	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -146,12 +145,12 @@ func GetCloudFromSecret(kubeClient kubernetes.Interface, namespace string, secre
 }
 
 // MachineSpecFromProviderSpec unmarshals a provider status into an OpenStack Machine Status type
-func MachineSpecFromProviderSpec(providerSpec machinev1.ProviderSpec) (*openstackconfigv1.OpenstackProviderSpec, error) {
+func MachineSpecFromProviderSpec(providerSpec machinev1.ProviderSpec) (*machinev1alpha1.OpenstackProviderSpec, error) {
 	if providerSpec.Value == nil {
 		return nil, errors.New("no such providerSpec found in manifest")
 	}
 
-	var config openstackconfigv1.OpenstackProviderSpec
+	var config machinev1alpha1.OpenstackProviderSpec
 	if err := yaml.Unmarshal(providerSpec.Value.Raw, &config); err != nil {
 		return nil, err
 	}

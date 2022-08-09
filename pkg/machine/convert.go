@@ -4,64 +4,24 @@ import (
 	"fmt"
 
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
+	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1 "github.com/openshift/api/machine/v1beta1"
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 	"github.com/openshift/machine-api-provider-openstack/pkg/utils"
 	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha5"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
-
-	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 )
 
-func NewOpenStackCluster(providerSpec *openstackconfigv1.OpenstackClusterProviderSpec, providerStatus *openstackconfigv1.OpenstackClusterProviderStatus) capov1.OpenStackCluster {
+func NewOpenStackCluster() capov1.OpenStackCluster {
 	return capov1.OpenStackCluster{
-		ObjectMeta: providerSpec.ObjectMeta,
-
-		Spec:   clusterProviderSpecToClusterSpec(providerSpec),
-		Status: clusterProviderStatusToClusterStatus(providerStatus),
+		Spec:   capov1.OpenStackClusterSpec{},
+		Status: capov1.OpenStackClusterStatus{},
 	}
-}
-
-func clusterProviderSpecToClusterSpec(cps *openstackconfigv1.OpenstackClusterProviderSpec) capov1.OpenStackClusterSpec {
-	return capov1.OpenStackClusterSpec{
-		NodeCIDR:              cps.NodeCIDR,
-		DNSNameservers:        cps.DNSNameservers,
-		ExternalNetworkID:     cps.ExternalNetworkID,
-		ManagedSecurityGroups: cps.ManagedSecurityGroups,
-		Tags:                  cps.Tags,
-	}
-}
-
-func clusterProviderStatusToClusterStatus(cps *openstackconfigv1.OpenstackClusterProviderStatus) capov1.OpenStackClusterStatus {
-	clusterStatus := capov1.OpenStackClusterStatus{Ready: true}
-
-	if cps.Network != nil {
-		clusterStatus.Network = &capov1.Network{
-			Name: cps.Network.Name,
-			ID:   cps.Network.ID,
-		}
-		if cps.Network.Subnet != nil {
-			subnet := cps.Network.Subnet
-			clusterStatus.Network.Subnet = &capov1.Subnet{
-				Name: subnet.Name,
-				ID:   subnet.ID,
-				CIDR: subnet.CIDR,
-			}
-		}
-		if cps.Network.Router != nil {
-			router := cps.Network.Router
-			clusterStatus.Network.Router = &capov1.Router{
-				Name: router.Name,
-				ID:   router.ID,
-			}
-		}
-	}
-	return clusterStatus
 }
 
 // Looks up a subnet in openstack and gets the ID of the network its attached to
-func getNetworkID(filter *openstackconfigv1.SubnetFilter, networkService *networking.Service) (string, error) {
+func getNetworkID(filter *machinev1alpha1.SubnetFilter, networkService *networking.Service) (string, error) {
 	listOpts := subnets.ListOpts(*filter)
 	subnets, err := networkService.GetSubnetsByFilter(listOpts)
 	if err != nil {
@@ -75,7 +35,7 @@ func getNetworkID(filter *openstackconfigv1.SubnetFilter, networkService *networ
 }
 
 // Converts NetworkParams to capov1 portOpts
-func networkParamToCapov1PortOpt(net *openstackconfigv1.NetworkParam, apiVIP, ingressVIP string, trunk *bool, networkService *networking.Service) ([]capov1.PortOpts, error) {
+func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIP, ingressVIP string, trunk *bool, networkService *networking.Service) ([]capov1.PortOpts, error) {
 	ports := []capov1.PortOpts{}
 	addressPairs := []capov1.AddressPair{}
 	if !net.NoAllowedAddressPairs {
@@ -116,7 +76,7 @@ func networkParamToCapov1PortOpt(net *openstackconfigv1.NetworkParam, apiVIP, in
 
 	tags := net.PortTags
 
-	if network.ID == "" && (net.Filter == openstackconfigv1.Filter{}) {
+	if network.ID == "" && (net.Filter == machinev1alpha1.Filter{}) {
 		// Case: network is undefined and only has subnets
 		// Create a port for each subnet
 		for _, subnet := range net.Subnets {
