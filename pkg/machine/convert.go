@@ -22,7 +22,31 @@ func NewOpenStackCluster() capov1.OpenStackCluster {
 
 // Looks up a subnet in openstack and gets the ID of the network its attached to
 func getNetworkID(filter *machinev1alpha1.SubnetFilter, networkService *networking.Service) (string, error) {
-	listOpts := subnets.ListOpts(*filter)
+	if filter.NetworkID != "" {
+		return filter.NetworkID, nil
+	}
+
+	projectID := filter.ProjectID
+	if projectID == "" {
+		projectID = filter.TenantID
+	}
+
+	listOpts := subnets.ListOpts{
+		Name:            filter.Name,
+		Description:     filter.Description,
+		ProjectID:       projectID,
+		IPVersion:       filter.IPVersion,
+		GatewayIP:       filter.GatewayIP,
+		CIDR:            filter.CIDR,
+		IPv6AddressMode: filter.IPv6AddressMode,
+		IPv6RAMode:      filter.IPv6RAMode,
+		ID:              filter.ID,
+		SubnetPoolID:    filter.SubnetPoolID,
+		Tags:            filter.Tags,
+		TagsAny:         filter.TagsAny,
+		NotTags:         filter.NotTags,
+		NotTagsAny:      filter.NotTagsAny,
+	}
 	subnets, err := networkService.GetSubnetsByFilter(listOpts)
 	if err != nil {
 		return "", err
@@ -60,11 +84,16 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIP, ingr
 		disablePortSecurity = &ps
 	}
 
+	projectID := net.Filter.ProjectID
+	if projectID == "" {
+		projectID = net.Filter.TenantID
+	}
+
 	network := capov1.NetworkFilter{
 		ID:          net.UUID,
 		Name:        net.Filter.Name,
 		Description: net.Filter.Description,
-		ProjectID:   net.Filter.ProjectID,
+		ProjectID:   projectID,
 		Tags:        net.Filter.Tags,
 		TagsAny:     net.Filter.TagsAny,
 		NotTags:     net.Filter.NotTags,
@@ -89,12 +118,17 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIP, ingr
 				subnetID = subnet.Filter.ID
 			}
 
+			projectID := subnet.Filter.ProjectID
+			if projectID == "" {
+				projectID = subnet.Filter.TenantID
+			}
+
 			fixedIP := []capov1.FixedIP{
 				{
 					Subnet: &capov1.SubnetFilter{
 						Name:            subnet.Filter.Name,
 						Description:     subnet.Filter.Description,
-						ProjectID:       subnet.Filter.ProjectID,
+						ProjectID:       projectID,
 						IPVersion:       subnet.Filter.IPVersion,
 						GatewayIP:       subnet.Filter.GatewayIP,
 						CIDR:            subnet.Filter.CIDR,
@@ -144,11 +178,16 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIP, ingr
 				id = subnet.Filter.ID
 			}
 
+			projectID := subnet.Filter.ProjectID
+			if projectID == "" {
+				projectID = subnet.Filter.TenantID
+			}
+
 			fixedIPs[i] = capov1.FixedIP{
 				Subnet: &capov1.SubnetFilter{
 					Name:            subnet.Filter.Name,
 					Description:     subnet.Filter.Description,
-					ProjectID:       subnet.Filter.ProjectID,
+					ProjectID:       projectID,
 					IPVersion:       subnet.Filter.IPVersion,
 					GatewayIP:       subnet.Filter.GatewayIP,
 					CIDR:            subnet.Filter.CIDR,
@@ -223,7 +262,9 @@ func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userD
 		//              populate ps.RootVolume.SourceUUID. Moreover, according to the ClusterOSImage
 		//              option definition this is always the name of the image and never the UUID.
 		//              We should allow UUID at some point and this will need an update.
-		instanceSpec.Image = ps.RootVolume.SourceUUID
+		if instanceSpec.Image == "" {
+			instanceSpec.Image = ps.RootVolume.SourceUUID
+		}
 	}
 
 	if ps.ServerGroupName != "" && ps.ServerGroupID == "" {
@@ -247,10 +288,23 @@ func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userD
 	}
 
 	for i, secGrp := range ps.SecurityGroups {
+		projectID := secGrp.Filter.ProjectID
+		if projectID == "" {
+			projectID = secGrp.Filter.TenantID
+		}
 		instanceSpec.SecurityGroups[i] = capov1.SecurityGroupParam{
-			UUID:   secGrp.UUID,
-			Name:   secGrp.Name,
-			Filter: capov1.SecurityGroupFilter(secGrp.Filter),
+			UUID: secGrp.UUID,
+			Name: secGrp.Name,
+			Filter: capov1.SecurityGroupFilter{
+				ID:          secGrp.Filter.ID,
+				Name:        secGrp.Filter.Name,
+				Description: secGrp.Filter.Description,
+				ProjectID:   projectID,
+				Tags:        secGrp.Filter.Tags,
+				TagsAny:     secGrp.Filter.TagsAny,
+				NotTags:     secGrp.Filter.NotTags,
+				NotTagsAny:  secGrp.Filter.NotTagsAny,
+			},
 		}
 	}
 
@@ -265,18 +319,21 @@ func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userD
 	}
 
 	for _, port := range ps.Ports {
+		projectID := port.ProjectID
+		if projectID == "" {
+			projectID = port.TenantID
+		}
+
 		capoPort := capov1.PortOpts{
 			Network:             &capov1.NetworkFilter{ID: port.NetworkID},
 			NameSuffix:          port.NameSuffix,
 			Description:         port.Description,
 			AdminStateUp:        port.AdminStateUp,
 			MACAddress:          port.MACAddress,
-			TenantID:            port.TenantID,
 			FixedIPs:            make([]capov1.FixedIP, len(port.FixedIPs)),
-			ProjectID:           port.ProjectID,
+			ProjectID:           projectID,
 			SecurityGroups:      port.SecurityGroups,
 			AllowedAddressPairs: make([]capov1.AddressPair, len(port.AllowedAddressPairs)),
-			HostID:              port.HostID,
 			VNICType:            port.VNICType,
 			Profile:             port.Profile,
 			Trunk:               port.Trunk,
