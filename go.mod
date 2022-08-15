@@ -120,3 +120,5 @@ replace (
 	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.1.3
 	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220428093657-523f6d703620
 )
+
+replace github.com/openshift/api => github.com/shiftstack/api v0.0.0-20220811163442-132a88680fa1
