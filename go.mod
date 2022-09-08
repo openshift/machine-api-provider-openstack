@@ -17,7 +17,7 @@ require (
 	k8s.io/client-go v0.25.0
 	k8s.io/cluster-bootstrap v0.25.0
 	k8s.io/klog/v2 v2.70.1
-	sigs.k8s.io/cluster-api-provider-openstack v0.5.1-0.20220401180447-6ba04de45920
+	sigs.k8s.io/cluster-api-provider-openstack v0.6.3
 	sigs.k8s.io/controller-runtime v0.12.1
 	sigs.k8s.io/yaml v1.3.0
 )
@@ -118,5 +118,5 @@ require (
 
 replace (
 	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.1.3
-	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220428093657-523f6d703620
+	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220908134637-ef44b7e10a92
 )
