@@ -5,8 +5,8 @@ go 1.18
 require (
 	github.com/coreos/container-linux-config-transpiler v0.9.0
 	github.com/go-logr/logr v1.2.3
-	github.com/gophercloud/gophercloud v0.24.0
-	github.com/gophercloud/utils v0.0.0-20220307143606-8e7800759d16
+	github.com/gophercloud/gophercloud v1.0.0
+	github.com/gophercloud/utils v0.0.0-20220704184730-55bdbbaec4ba
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.19.0
 	github.com/openshift/api v0.0.0-20220907152121-48d78630feb3
