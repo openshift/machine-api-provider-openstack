@@ -119,5 +119,5 @@ require (
 
 replace (
 	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.1.3
-	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.5.1-0.20220908134637-ef44b7e10a92
+	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.6.3
 )
