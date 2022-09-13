@@ -29,10 +29,11 @@ import (
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 	capoRecorder "sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
 
-	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
+	openstackclusterconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 	"github.com/openshift/machine-api-provider-openstack/pkg/utils"
 
+	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1 "github.com/openshift/api/machine/v1beta1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	maoMachine "github.com/openshift/machine-api-operator/pkg/controller/machine"
@@ -89,9 +90,9 @@ func (oc *OpenstackClient) getOpenStackContext(machine *machinev1.Machine) (*ope
 
 func getOSCluster() capov1.OpenStackCluster {
 	// TODO(egarcia): if we ever use the cluster object, this will benifit from reading from it
-	var clusterSpec openstackconfigv1.OpenstackClusterProviderSpec
+	var clusterSpec openstackclusterconfigv1.OpenstackClusterProviderSpec
 
-	return NewOpenStackCluster(&clusterSpec, &openstackconfigv1.OpenstackClusterProviderStatus{})
+	return NewOpenStackCluster(&clusterSpec, &openstackclusterconfigv1.OpenstackClusterProviderStatus{})
 }
 
 func (oc *OpenstackClient) setProviderID(ctx context.Context, machine *machinev1.Machine, instanceID string) error {
@@ -258,7 +259,7 @@ func (oc *OpenstackClient) createInstance(ctx context.Context, machine *machinev
 	return instanceStatus, nil
 }
 
-func reconcileFloatingIP(machine *machinev1.Machine, providerSpec *openstackconfigv1.OpenstackProviderSpec, instanceStatus *compute.InstanceStatus, osc *openStackContext) error {
+func reconcileFloatingIP(machine *machinev1.Machine, providerSpec *machinev1alpha1.OpenstackProviderSpec, instanceStatus *compute.InstanceStatus, osc *openStackContext) error {
 	if providerSpec.FloatingIP == "" {
 		return nil
 	}
