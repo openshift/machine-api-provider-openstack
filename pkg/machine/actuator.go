@@ -29,7 +29,6 @@ import (
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 	capoRecorder "sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
 
-	openstackclusterconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 	"github.com/openshift/machine-api-provider-openstack/pkg/utils"
 
@@ -86,13 +85,6 @@ func (oc *OpenstackClient) getOpenStackContext(machine *machinev1.Machine) (*ope
 		return nil, err
 	}
 	return &openStackContext{provider, &cloud, nil, nil}, nil
-}
-
-func getOSCluster() capov1.OpenStackCluster {
-	// TODO(egarcia): if we ever use the cluster object, this will benifit from reading from it
-	var clusterSpec openstackclusterconfigv1.OpenstackClusterProviderSpec
-
-	return NewOpenStackCluster(&clusterSpec, &openstackclusterconfigv1.OpenstackClusterProviderStatus{})
 }
 
 func (oc *OpenstackClient) setProviderID(ctx context.Context, machine *machinev1.Machine, instanceID string) error {
@@ -249,7 +241,7 @@ func (oc *OpenstackClient) createInstance(ctx context.Context, machine *machinev
 		return nil, err
 	}
 
-	osCluster := getOSCluster()
+	var osCluster capov1.OpenStackCluster
 	clusterNameWithNamespace := utils.GetClusterNameWithNamespace(machine)
 	instanceStatus, err := computeService.CreateInstance(machine, &osCluster, instanceSpec, clusterNameWithNamespace)
 	if err != nil {
@@ -280,7 +272,7 @@ func reconcileFloatingIP(machine *machinev1.Machine, providerSpec *machinev1alph
 	if err != nil {
 		return err
 	}
-	osCluster := getOSCluster()
+	var osCluster capov1.OpenStackCluster
 	fp, err := networkService.GetOrCreateFloatingIP(machine, &osCluster, utils.GetClusterNameWithNamespace(machine), providerSpec.FloatingIP)
 	if err != nil {
 		return fmt.Errorf("get floatingIP err: %v", err)

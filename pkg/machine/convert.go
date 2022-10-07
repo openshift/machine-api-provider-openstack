@@ -11,55 +11,7 @@ import (
 	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha5"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
-
-	openstackclusterconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 )
-
-func NewOpenStackCluster(providerSpec *openstackclusterconfigv1.OpenstackClusterProviderSpec, providerStatus *openstackclusterconfigv1.OpenstackClusterProviderStatus) capov1.OpenStackCluster {
-	return capov1.OpenStackCluster{
-		ObjectMeta: providerSpec.ObjectMeta,
-
-		Spec:   clusterProviderSpecToClusterSpec(providerSpec),
-		Status: clusterProviderStatusToClusterStatus(providerStatus),
-	}
-}
-
-func clusterProviderSpecToClusterSpec(cps *openstackclusterconfigv1.OpenstackClusterProviderSpec) capov1.OpenStackClusterSpec {
-	return capov1.OpenStackClusterSpec{
-		NodeCIDR:              cps.NodeCIDR,
-		DNSNameservers:        cps.DNSNameservers,
-		ExternalNetworkID:     cps.ExternalNetworkID,
-		ManagedSecurityGroups: cps.ManagedSecurityGroups,
-		Tags:                  cps.Tags,
-	}
-}
-
-func clusterProviderStatusToClusterStatus(cps *openstackclusterconfigv1.OpenstackClusterProviderStatus) capov1.OpenStackClusterStatus {
-	clusterStatus := capov1.OpenStackClusterStatus{Ready: true}
-
-	if cps.Network != nil {
-		clusterStatus.Network = &capov1.Network{
-			Name: cps.Network.Name,
-			ID:   cps.Network.ID,
-		}
-		if cps.Network.Subnet != nil {
-			subnet := cps.Network.Subnet
-			clusterStatus.Network.Subnet = &capov1.Subnet{
-				Name: subnet.Name,
-				ID:   subnet.ID,
-				CIDR: subnet.CIDR,
-			}
-		}
-		if cps.Network.Router != nil {
-			router := cps.Network.Router
-			clusterStatus.Network.Router = &capov1.Router{
-				Name: router.Name,
-				ID:   router.ID,
-			}
-		}
-	}
-	return clusterStatus
-}
 
 // Looks up a subnet in openstack and gets the ID of the network its attached to
 func getNetworkID(filter *machinev1alpha1.SubnetFilter, networkService *networking.Service) (string, error) {

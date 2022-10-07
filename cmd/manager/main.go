@@ -22,7 +22,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/openshift/machine-api-provider-openstack/pkg/apis"
 	"github.com/openshift/machine-api-provider-openstack/pkg/machine"
 	"github.com/openshift/machine-api-provider-openstack/pkg/machineset"
 
@@ -123,10 +122,6 @@ func main() {
 
 	// Setup Scheme for all resources
 	if err := machinev1alpha1.Install(mgr.GetScheme()); err != nil {
-		klog.Fatal(err)
-	}
-
-	if err := apis.AddToScheme(mgr.GetScheme()); err != nil {
 		klog.Fatal(err)
 	}
 
