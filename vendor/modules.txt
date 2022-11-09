@@ -283,6 +283,7 @@ github.com/onsi/gomega/types
 github.com/openshift/api/config/v1
 github.com/openshift/api/config/v1alpha1
 github.com/openshift/api/machine/v1
+github.com/openshift/api/machine/v1alpha1
 github.com/openshift/api/machine/v1beta1
 # github.com/openshift/client-go v0.0.0-20220905192401-849f725bff84
 ## explicit; go 1.18

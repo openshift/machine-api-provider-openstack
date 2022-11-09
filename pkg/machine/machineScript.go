@@ -23,12 +23,11 @@ import (
 	"fmt"
 	"text/template"
 
-	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
+	clconfig "github.com/coreos/container-linux-config-transpiler/config"
+	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
+	machinev1 "github.com/openshift/api/machine/v1beta1"
 	"github.com/openshift/machine-api-provider-openstack/pkg/bootstrap"
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
-
-	clconfig "github.com/coreos/container-linux-config-transpiler/config"
-	machinev1 "github.com/openshift/api/machine/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -43,7 +42,7 @@ const (
 type setupParams struct {
 	Token       string
 	Machine     *machinev1.Machine
-	MachineSpec *openstackconfigv1.OpenstackProviderSpec
+	MachineSpec *machinev1alpha1.OpenstackProviderSpec
 }
 
 func init() {
@@ -90,7 +89,7 @@ func nodeStartupScript(machine *machinev1.Machine, token, script string) (string
 	return buf.String(), nil
 }
 
-func (oc *OpenstackClient) getUserData(machine *machinev1.Machine, providerSpec *openstackconfigv1.OpenstackProviderSpec, kubeClient kubernetes.Interface) (string, error) {
+func (oc *OpenstackClient) getUserData(machine *machinev1.Machine, providerSpec *machinev1alpha1.OpenstackProviderSpec, kubeClient kubernetes.Interface) (string, error) {
 	// get machine startup script
 	var ok bool
 	var disableTemplating bool

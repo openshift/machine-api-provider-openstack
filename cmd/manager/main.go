@@ -22,12 +22,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/openshift/machine-api-provider-openstack/pkg/apis"
 	"github.com/openshift/machine-api-provider-openstack/pkg/machine"
 	"github.com/openshift/machine-api-provider-openstack/pkg/machineset"
 
 	configv1 "github.com/openshift/api/config/v1"
-	machinev1 "github.com/openshift/api/machine/v1beta1"
+	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
+	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	maoMachine "github.com/openshift/machine-api-operator/pkg/controller/machine"
 	"github.com/openshift/machine-api-operator/pkg/metrics"
@@ -121,7 +121,7 @@ func main() {
 	klog.Infof("Initializing Dependencies.")
 
 	// Setup Scheme for all resources
-	if err := apis.AddToScheme(mgr.GetScheme()); err != nil {
+	if err := machinev1alpha1.Install(mgr.GetScheme()); err != nil {
 		klog.Fatal(err)
 	}
 
@@ -129,7 +129,7 @@ func main() {
 		klog.Fatal(err)
 	}
 
-	if err := machinev1.AddToScheme(mgr.GetScheme()); err != nil {
+	if err := machinev1beta1.AddToScheme(mgr.GetScheme()); err != nil {
 		klog.Fatal(err)
 	}
 

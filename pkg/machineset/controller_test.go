@@ -8,14 +8,13 @@ import (
 	"testing"
 	"time"
 
-	machineproviderv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
-
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	gtypes "github.com/onsi/gomega/types"
-	machinev1 "github.com/openshift/api/machine/v1beta1"
+	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
+	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -120,7 +119,7 @@ var _ = Describe("Reconciler", func() {
 			Expect(c.Create(ctx, machineSet)).To(Succeed())
 
 			Eventually(func() map[string]string {
-				m := &machinev1.MachineSet{}
+				m := &machinev1beta1.MachineSet{}
 				key := client.ObjectKey{Namespace: machineSet.Namespace, Name: machineSet.Name}
 				err := c.Get(ctx, key, m)
 				if err != nil {
@@ -194,7 +193,7 @@ func deleteNameSpace(c client.Client, ns *corev1.Namespace) error {
 }
 
 func deleteMachineSets(c client.Client, namespaceName string) error {
-	machineSets := &machinev1.MachineSetList{}
+	machineSets := &machinev1beta1.MachineSetList{}
 	err := c.List(ctx, machineSets, client.InNamespace(namespaceName))
 	if err != nil {
 		return err
@@ -208,7 +207,7 @@ func deleteMachineSets(c client.Client, namespaceName string) error {
 	}
 
 	Eventually(func() error {
-		machineSets := &machinev1.MachineSetList{}
+		machineSets := &machinev1beta1.MachineSetList{}
 		err := c.List(ctx, machineSets, client.InNamespace(namespaceName))
 		if err != nil {
 			return err
@@ -301,14 +300,14 @@ func TestReconcile(t *testing.T) {
 	}
 }
 
-func newTestMachineSet(namespace string, flavor string, existingAnnotations map[string]string) (*machinev1.MachineSet, error) {
+func newTestMachineSet(namespace string, flavor string, existingAnnotations map[string]string) (*machinev1beta1.MachineSet, error) {
 	// Copy anntotations map so we don't modify the input
 	annotations := make(map[string]string)
 	for k, v := range existingAnnotations {
 		annotations[k] = v
 	}
 
-	machineProviderSpec := &machineproviderv1.OpenstackProviderSpec{
+	machineProviderSpec := &machinev1alpha1.OpenstackProviderSpec{
 		Flavor:    flavor,
 		CloudName: "openstack",
 		CloudsSecret: &corev1.SecretReference{
@@ -322,15 +321,15 @@ func newTestMachineSet(namespace string, flavor string, existingAnnotations map[
 		return nil, err
 	}
 
-	return &machinev1.MachineSet{
+	return &machinev1beta1.MachineSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations:  annotations,
 			GenerateName: "test-machineset-",
 			Namespace:    namespace,
 		},
-		Spec: machinev1.MachineSetSpec{
-			Template: machinev1.MachineTemplateSpec{
-				Spec: machinev1.MachineSpec{
+		Spec: machinev1beta1.MachineSetSpec{
+			Template: machinev1beta1.MachineTemplateSpec{
+				Spec: machinev1beta1.MachineSpec{
 					ProviderSpec: providerSpec,
 				},
 			},
@@ -338,12 +337,12 @@ func newTestMachineSet(namespace string, flavor string, existingAnnotations map[
 	}, nil
 }
 
-func providerSpecFromMachine(in *machineproviderv1.OpenstackProviderSpec) (machinev1.ProviderSpec, error) {
+func providerSpecFromMachine(in *machinev1alpha1.OpenstackProviderSpec) (machinev1beta1.ProviderSpec, error) {
 	bytes, err := json.Marshal(in)
 	if err != nil {
-		return machinev1.ProviderSpec{}, err
+		return machinev1beta1.ProviderSpec{}, err
 	}
-	return machinev1.ProviderSpec{
+	return machinev1beta1.ProviderSpec{
 		Value: &runtime.RawExtension{Raw: bytes},
 	}, nil
 }

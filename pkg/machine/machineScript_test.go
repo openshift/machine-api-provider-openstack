@@ -9,7 +9,7 @@ import (
 
 const providerSpecYAML = `
 value:
-  apiVersion: "openstackproviderconfig/v1alpha1"
+  apiVersion: "machine.openshift.io/v1alpha1"
   kind: "OpenstackProviderSpec"
 `
 

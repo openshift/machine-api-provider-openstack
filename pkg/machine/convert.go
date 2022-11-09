@@ -4,65 +4,34 @@ import (
 	"fmt"
 
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
-	machinev1 "github.com/openshift/api/machine/v1beta1"
+	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
+	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 	"github.com/openshift/machine-api-provider-openstack/pkg/utils"
 	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha5"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
-
-	openstackconfigv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
 )
 
-func NewOpenStackCluster(providerSpec *openstackconfigv1.OpenstackClusterProviderSpec, providerStatus *openstackconfigv1.OpenstackClusterProviderStatus) capov1.OpenStackCluster {
-	return capov1.OpenStackCluster{
-		ObjectMeta: providerSpec.ObjectMeta,
-
-		Spec:   clusterProviderSpecToClusterSpec(providerSpec),
-		Status: clusterProviderStatusToClusterStatus(providerStatus),
-	}
-}
-
-func clusterProviderSpecToClusterSpec(cps *openstackconfigv1.OpenstackClusterProviderSpec) capov1.OpenStackClusterSpec {
-	return capov1.OpenStackClusterSpec{
-		NodeCIDR:              cps.NodeCIDR,
-		DNSNameservers:        cps.DNSNameservers,
-		ExternalNetworkID:     cps.ExternalNetworkID,
-		ManagedSecurityGroups: cps.ManagedSecurityGroups,
-		Tags:                  cps.Tags,
-	}
-}
-
-func clusterProviderStatusToClusterStatus(cps *openstackconfigv1.OpenstackClusterProviderStatus) capov1.OpenStackClusterStatus {
-	clusterStatus := capov1.OpenStackClusterStatus{Ready: true}
-
-	if cps.Network != nil {
-		clusterStatus.Network = &capov1.Network{
-			Name: cps.Network.Name,
-			ID:   cps.Network.ID,
-		}
-		if cps.Network.Subnet != nil {
-			subnet := cps.Network.Subnet
-			clusterStatus.Network.Subnet = &capov1.Subnet{
-				Name: subnet.Name,
-				ID:   subnet.ID,
-				CIDR: subnet.CIDR,
-			}
-		}
-		if cps.Network.Router != nil {
-			router := cps.Network.Router
-			clusterStatus.Network.Router = &capov1.Router{
-				Name: router.Name,
-				ID:   router.ID,
-			}
-		}
-	}
-	return clusterStatus
-}
-
 // Looks up a subnet in openstack and gets the ID of the network its attached to
-func getNetworkID(filter *openstackconfigv1.SubnetFilter, networkService *networking.Service) (string, error) {
-	listOpts := subnets.ListOpts(*filter)
+func getNetworkID(filter *machinev1alpha1.SubnetFilter, networkService *networking.Service) (string, error) {
+	listOpts := subnets.ListOpts{
+		Name:            filter.Name,
+		Description:     filter.Description,
+		TenantID:        filter.TenantID,
+		ProjectID:       filter.ProjectID,
+		IPVersion:       filter.IPVersion,
+		GatewayIP:       filter.GatewayIP,
+		CIDR:            filter.CIDR,
+		IPv6AddressMode: filter.IPv6AddressMode,
+		IPv6RAMode:      filter.IPv6RAMode,
+		ID:              filter.ID,
+		SubnetPoolID:    filter.SubnetPoolID,
+		Tags:            filter.Tags,
+		TagsAny:         filter.TagsAny,
+		NotTags:         filter.NotTags,
+		NotTagsAny:      filter.NotTagsAny,
+	}
 	subnets, err := networkService.GetSubnetsByFilter(listOpts)
 	if err != nil {
 		return "", err
@@ -75,7 +44,7 @@ func getNetworkID(filter *openstackconfigv1.SubnetFilter, networkService *networ
 }
 
 // Converts NetworkParams to capov1 portOpts
-func networkParamToCapov1PortOpt(net *openstackconfigv1.NetworkParam, apiVIP, ingressVIP string, trunk *bool, networkService *networking.Service) ([]capov1.PortOpts, error) {
+func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIP, ingressVIP string, trunk *bool, networkService *networking.Service) ([]capov1.PortOpts, error) {
 	ports := []capov1.PortOpts{}
 	addressPairs := []capov1.AddressPair{}
 	if !net.NoAllowedAddressPairs {
@@ -116,7 +85,7 @@ func networkParamToCapov1PortOpt(net *openstackconfigv1.NetworkParam, apiVIP, in
 
 	tags := net.PortTags
 
-	if network.ID == "" && (net.Filter == openstackconfigv1.Filter{}) {
+	if network.ID == "" && (net.Filter == machinev1alpha1.Filter{}) {
 		// Case: network is undefined and only has subnets
 		// Create a port for each subnet
 		for _, subnet := range net.Subnets {
@@ -220,7 +189,7 @@ func networkParamToCapov1PortOpt(net *openstackconfigv1.NetworkParam, apiVIP, in
 	return ports, nil
 }
 
-func injectDefaultTags(instanceSpec *compute.InstanceSpec, machine *machinev1.Machine) {
+func injectDefaultTags(instanceSpec *compute.InstanceSpec, machine *machinev1beta1.Machine) {
 	defaultTags := []string{
 		"cluster-api-provider-openstack",
 		utils.GetClusterNameWithNamespace(machine),
@@ -228,7 +197,7 @@ func injectDefaultTags(instanceSpec *compute.InstanceSpec, machine *machinev1.Ma
 	instanceSpec.Tags = append(instanceSpec.Tags, defaultTags...)
 }
 
-func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userData string, networkService *networking.Service, instanceService *clients.InstanceService) (*compute.InstanceSpec, error) {
+func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIP, ingressVIP, userData string, networkService *networking.Service, instanceService *clients.InstanceService) (*compute.InstanceSpec, error) {
 	ps, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return nil, err
@@ -288,9 +257,19 @@ func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userD
 
 	for i, secGrp := range ps.SecurityGroups {
 		instanceSpec.SecurityGroups[i] = capov1.SecurityGroupParam{
-			UUID:   secGrp.UUID,
-			Name:   secGrp.Name,
-			Filter: capov1.SecurityGroupFilter(secGrp.Filter),
+			UUID: secGrp.UUID,
+			Name: secGrp.Name,
+			Filter: capov1.SecurityGroupFilter{
+				ID:          secGrp.Filter.ID,
+				Name:        secGrp.Filter.Name,
+				Description: secGrp.Filter.Description,
+				TenantID:    secGrp.Filter.TenantID,
+				ProjectID:   secGrp.Filter.ProjectID,
+				Tags:        secGrp.Filter.Tags,
+				TagsAny:     secGrp.Filter.TagsAny,
+				NotTags:     secGrp.Filter.NotTags,
+				NotTagsAny:  secGrp.Filter.NotTagsAny,
+			},
 		}
 	}
 
@@ -316,7 +295,6 @@ func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userD
 			ProjectID:           port.ProjectID,
 			SecurityGroups:      port.SecurityGroups,
 			AllowedAddressPairs: make([]capov1.AddressPair, len(port.AllowedAddressPairs)),
-			HostID:              port.HostID,
 			VNICType:            port.VNICType,
 			Profile:             port.Profile,
 			Trunk:               port.Trunk,
