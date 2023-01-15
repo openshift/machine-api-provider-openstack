@@ -142,11 +142,19 @@ func (oc *OpenstackClient) convertMachineToCapoInstanceSpec(osc *openStackContex
 		return nil, maoMachine.InvalidMachineConfiguration("error creating bootstrap for %s: %v", machine.Name, err)
 	}
 
+	var apiVip, ingressVip string
+	if clusterInfra.Status.PlatformStatus.OpenStack != nil && clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIP != "" {
+		apiVip = clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIP
+	}
+	if clusterInfra.Status.PlatformStatus.OpenStack != nil && clusterInfra.Status.PlatformStatus.OpenStack.IngressIP != "" {
+		ingressVip = clusterInfra.Status.PlatformStatus.OpenStack.IngressIP
+	}
+
 	// Convert to CAPO InstanceSpec
 	instanceSpec, err := MachineToInstanceSpec(
 		machine,
-		clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIP,
-		clusterInfra.Status.PlatformStatus.OpenStack.IngressIP,
+		apiVip,
+		ingressVip,
 		userDataRendered, networkService, instanceService,
 	)
 	if err != nil {
