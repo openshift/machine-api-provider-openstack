@@ -46,16 +46,17 @@ func getNetworkID(filter *machinev1alpha1.SubnetFilter, networkService *networki
 // Converts NetworkParams to capov1 portOpts
 func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIP, ingressVIP string, trunk *bool, networkService *networking.Service) ([]capov1.PortOpts, error) {
 	ports := []capov1.PortOpts{}
+
 	addressPairs := []capov1.AddressPair{}
-	if !net.NoAllowedAddressPairs {
-		addressPairs = []capov1.AddressPair{
-			{
-				IPAddress: apiVIP,
-			},
-			{
-				IPAddress: ingressVIP,
-			},
-		}
+	if !net.NoAllowedAddressPairs && apiVIP != "" {
+		addressPairs = append(addressPairs, capov1.AddressPair{
+			IPAddress: apiVIP,
+		})
+	}
+	if !net.NoAllowedAddressPairs && ingressVIP != "" {
+		addressPairs = append(addressPairs, capov1.AddressPair{
+			IPAddress: ingressVIP,
+		})
 	}
 
 	// Flip the value of port security if not nil
