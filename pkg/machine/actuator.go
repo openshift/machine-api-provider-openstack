@@ -32,6 +32,7 @@ import (
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 	"github.com/openshift/machine-api-provider-openstack/pkg/utils"
 
+	configv1 "github.com/openshift/api/config/v1"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1 "github.com/openshift/api/machine/v1beta1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
@@ -142,12 +143,20 @@ func (oc *OpenstackClient) convertMachineToCapoInstanceSpec(osc *openStackContex
 		return nil, maoMachine.InvalidMachineConfiguration("error creating bootstrap for %s: %v", machine.Name, err)
 	}
 
+	var ignoreAddressPairs bool = false
+	if clusterInfra.Status.PlatformStatus.OpenStack.LoadBalancer != nil && clusterInfra.Status.PlatformStatus.OpenStack.LoadBalancer.Type == configv1.LoadBalancerTypeUserManaged {
+		// If the load balancer type is managed by the user, we don't want to create address pairs because the
+		// API & Ingress VIPs are not managed by the cluster.
+		ignoreAddressPairs = true
+	}
+
 	// Convert to CAPO InstanceSpec
 	instanceSpec, err := MachineToInstanceSpec(
 		machine,
 		clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIP,
 		clusterInfra.Status.PlatformStatus.OpenStack.IngressIP,
 		userDataRendered, networkService, instanceService,
+		ignoreAddressPairs,
 	)
 	if err != nil {
 		return nil, err

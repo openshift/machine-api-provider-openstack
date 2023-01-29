@@ -44,18 +44,17 @@ func getNetworkID(filter *machinev1alpha1.SubnetFilter, networkService *networki
 }
 
 // Converts NetworkParams to capov1 portOpts
-func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIP, ingressVIP string, trunk *bool, networkService *networking.Service) ([]capov1.PortOpts, error) {
+func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIP, ingressVIP string, trunk *bool, networkService *networking.Service, ignoreAddressPairs bool) ([]capov1.PortOpts, error) {
 	ports := []capov1.PortOpts{}
+
 	addressPairs := []capov1.AddressPair{}
-	if !net.NoAllowedAddressPairs {
-		addressPairs = []capov1.AddressPair{
-			{
-				IPAddress: apiVIP,
-			},
-			{
-				IPAddress: ingressVIP,
-			},
-		}
+	if !(net.NoAllowedAddressPairs || ignoreAddressPairs) {
+		addressPairs = append(addressPairs, capov1.AddressPair{
+			IPAddress: apiVIP,
+		})
+		addressPairs = append(addressPairs, capov1.AddressPair{
+			IPAddress: ingressVIP,
+		})
 	}
 
 	// Flip the value of port security if not nil
@@ -122,13 +121,16 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIP, ingr
 
 			port := capov1.PortOpts{
 				Network:             &network,
-				AllowedAddressPairs: addressPairs,
 				Trunk:               trunk,
 				DisablePortSecurity: disablePortSecurity,
 				VNICType:            net.VNICType,
 				FixedIPs:            fixedIP,
 				Tags:                portTags,
 				Profile:             net.Profile,
+			}
+
+			if len(addressPairs) > 0 {
+				port.AllowedAddressPairs = addressPairs
 			}
 
 			// Fetch the UUID of the network subnet is attached to or the conversion will fail
@@ -183,6 +185,9 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIP, ingr
 			Tags:                tags,
 		}
 
+		if len(addressPairs) > 0 {
+			port.AllowedAddressPairs = addressPairs
+		}
 		ports = append(ports, port)
 	}
 
@@ -197,7 +202,7 @@ func injectDefaultTags(instanceSpec *compute.InstanceSpec, machine *machinev1bet
 	instanceSpec.Tags = append(instanceSpec.Tags, defaultTags...)
 }
 
-func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIP, ingressVIP, userData string, networkService *networking.Service, instanceService *clients.InstanceService) (*compute.InstanceSpec, error) {
+func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIP, ingressVIP, userData string, networkService *networking.Service, instanceService *clients.InstanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
 	ps, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return nil, err
@@ -276,7 +281,7 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIP, ingressVIP, 
 	// The order of the networks is important, first network is the one that will be used for kubelet when
 	// the legacy cloud provider is used. Once we switch to using CCM by default, the order won't matter.
 	for _, network := range ps.Networks {
-		ports, err := networkParamToCapov1PortOpt(&network, apiVIP, ingressVIP, &ps.Trunk, networkService)
+		ports, err := networkParamToCapov1PortOpt(&network, apiVIP, ingressVIP, &ps.Trunk, networkService, ignoreAddressPairs)
 		if err != nil {
 			return nil, err
 		}
@@ -285,19 +290,25 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIP, ingressVIP, 
 
 	for _, port := range ps.Ports {
 		capoPort := capov1.PortOpts{
-			Network:             &capov1.NetworkFilter{ID: port.NetworkID},
-			NameSuffix:          port.NameSuffix,
-			Description:         port.Description,
-			AdminStateUp:        port.AdminStateUp,
-			MACAddress:          port.MACAddress,
-			TenantID:            port.TenantID,
-			FixedIPs:            make([]capov1.FixedIP, len(port.FixedIPs)),
-			ProjectID:           port.ProjectID,
-			SecurityGroups:      port.SecurityGroups,
-			AllowedAddressPairs: make([]capov1.AddressPair, len(port.AllowedAddressPairs)),
-			VNICType:            port.VNICType,
-			Profile:             port.Profile,
-			Trunk:               port.Trunk,
+			Network:        &capov1.NetworkFilter{ID: port.NetworkID},
+			NameSuffix:     port.NameSuffix,
+			Description:    port.Description,
+			AdminStateUp:   port.AdminStateUp,
+			MACAddress:     port.MACAddress,
+			TenantID:       port.TenantID,
+			FixedIPs:       make([]capov1.FixedIP, len(port.FixedIPs)),
+			ProjectID:      port.ProjectID,
+			SecurityGroups: port.SecurityGroups,
+			VNICType:       port.VNICType,
+			Profile:        port.Profile,
+			Trunk:          port.Trunk,
+		}
+
+		if !ignoreAddressPairs {
+			capoPort.AllowedAddressPairs = make([]capov1.AddressPair, len(port.AllowedAddressPairs))
+			for addrPairIndex, addrPair := range port.AllowedAddressPairs {
+				capoPort.AllowedAddressPairs[addrPairIndex] = capov1.AddressPair(addrPair)
+			}
 		}
 
 		for fixedIPindex, fixedIP := range port.FixedIPs {
@@ -307,9 +318,6 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIP, ingressVIP, 
 			}
 		}
 
-		for addrPairIndex, addrPair := range port.AllowedAddressPairs {
-			capoPort.AllowedAddressPairs[addrPairIndex] = capov1.AddressPair(addrPair)
-		}
 		instanceSpec.Ports = append(instanceSpec.Ports, capoPort)
 	}
 
