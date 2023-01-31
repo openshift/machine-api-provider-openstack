@@ -339,8 +339,8 @@ github.com/russross/blackfriday v1.5.2/go.mod h1:JO/DiYxRf+HjHt06OyowR9PTA263kcR
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
 github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd/go.mod h1:hPqNNc0+uJM6H+SuU8sEs5K5IQeKccPqeSjfgcKGgPk=
 github.com/sergi/go-diff v1.1.0 h1:we8PVUC3FE2uYfodKH/nBHMSetSfHDR6scGdBi+erh0=
-github.com/shiftstack/api v0.0.0-20230130201417-072a8d0c0afb h1:2u/qDN1yV/7/XC5fxTNqia2bv+MYk2dpi5gtLNfRBbE=
-github.com/shiftstack/api v0.0.0-20230130201417-072a8d0c0afb/go.mod h1:ctXNyWanKEjGj8sss1KjjHQ3ENKFm33FFnS5BKaIPh4=
+github.com/shiftstack/api v0.0.0-20230207200811-084a41e04d3b h1:HtFhuLCS4T5e4du9xz2s2fFUnk+gGV0FoXk8Xya9fkE=
+github.com/shiftstack/api v0.0.0-20230207200811-084a41e04d3b/go.mod h1:ctXNyWanKEjGj8sss1KjjHQ3ENKFm33FFnS5BKaIPh4=
 github.com/shiftstack/cluster-api-provider-openstack v0.0.0-20230131140434-9bb6e5823c81 h1:9IET+LG/TpeakNQb0P8iVi+fBu6VbachbMO6LlJzirY=
 github.com/shiftstack/cluster-api-provider-openstack v0.0.0-20230131140434-9bb6e5823c81/go.mod h1:HzYi7uLs5fim+UzLJQUEnC3R2K7Gi5lWPGwqUJAw2mM=
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=

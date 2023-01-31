@@ -118,4 +118,4 @@ replace (
 )
 
 // Until the API change is merged: https://github.com/openshift/api/pull/1391
-replace github.com/openshift/api => github.com/shiftstack/api v0.0.0-20230130201417-072a8d0c0afb
+replace github.com/openshift/api => github.com/shiftstack/api v0.0.0-20230207200811-084a41e04d3b

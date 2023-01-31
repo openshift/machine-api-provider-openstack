@@ -12,7 +12,6 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
@@ -36,10 +35,6 @@ func TestReconciler(t *testing.T) {
 	// this aside in order to get our CI passing and working so that release images can be built.
 	t.Skip("test is broken, and will be updated before GA")
 	RegisterFailHandler(Fail)
-
-	RunSpecsWithDefaultAndCustomReporters(t,
-		"Machineset Controller Suite",
-		[]Reporter{printer.NewlineReporter{}})
 }
 
 var _ = BeforeSuite(func() {
