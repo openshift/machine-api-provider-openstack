@@ -153,8 +153,8 @@ func (oc *OpenstackClient) convertMachineToCapoInstanceSpec(osc *openStackContex
 	// Convert to CAPO InstanceSpec
 	instanceSpec, err := MachineToInstanceSpec(
 		machine,
-		clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIP,
-		clusterInfra.Status.PlatformStatus.OpenStack.IngressIP,
+		clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIPs,
+		clusterInfra.Status.PlatformStatus.OpenStack.IngressIPs,
 		userDataRendered, networkService, instanceService,
 		ignoreAddressPairs,
 	)

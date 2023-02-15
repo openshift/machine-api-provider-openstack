@@ -44,17 +44,21 @@ func getNetworkID(filter *machinev1alpha1.SubnetFilter, networkService *networki
 }
 
 // Converts NetworkParams to capov1 portOpts
-func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIP, ingressVIP string, trunk *bool, networkService *networking.Service, ignoreAddressPairs bool) ([]capov1.PortOpts, error) {
+func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ingressVIPs []string, trunk *bool, networkService *networking.Service, ignoreAddressPairs bool) ([]capov1.PortOpts, error) {
 	ports := []capov1.PortOpts{}
 
 	addressPairs := []capov1.AddressPair{}
 	if !(net.NoAllowedAddressPairs || ignoreAddressPairs) {
-		addressPairs = append(addressPairs, capov1.AddressPair{
-			IPAddress: apiVIP,
-		})
-		addressPairs = append(addressPairs, capov1.AddressPair{
-			IPAddress: ingressVIP,
-		})
+		for _, apiVIP := range apiVIPs {
+			addressPairs = append(addressPairs, capov1.AddressPair{
+				IPAddress: apiVIP,
+			})
+		}
+		for _, ingressVIP := range ingressVIPs {
+			addressPairs = append(addressPairs, capov1.AddressPair{
+				IPAddress: ingressVIP,
+			})
+		}
 	}
 
 	// Flip the value of port security if not nil
@@ -202,7 +206,7 @@ func injectDefaultTags(instanceSpec *compute.InstanceSpec, machine *machinev1bet
 	instanceSpec.Tags = append(instanceSpec.Tags, defaultTags...)
 }
 
-func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIP, ingressVIP, userData string, networkService *networking.Service, instanceService *clients.InstanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
+func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, networkService *networking.Service, instanceService *clients.InstanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
 	ps, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return nil, err
@@ -281,7 +285,7 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIP, ingressVIP, 
 	// The order of the networks is important, first network is the one that will be used for kubelet when
 	// the legacy cloud provider is used. Once we switch to using CCM by default, the order won't matter.
 	for _, network := range ps.Networks {
-		ports, err := networkParamToCapov1PortOpt(&network, apiVIP, ingressVIP, &ps.Trunk, networkService, ignoreAddressPairs)
+		ports, err := networkParamToCapov1PortOpt(&network, apiVIPs, ingressVIPs, &ps.Trunk, networkService, ignoreAddressPairs)
 		if err != nil {
 			return nil, err
 		}
