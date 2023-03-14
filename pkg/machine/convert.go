@@ -76,7 +76,7 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 	}
 
 	network := capov1.NetworkFilter{
-		ID:          net.UUID,
+		ID:          coalesce(net.UUID, net.Filter.ID),
 		Name:        net.Filter.Name,
 		Description: net.Filter.Description,
 		ProjectID:   coalesce(net.Filter.ProjectID, net.Filter.TenantID),
@@ -85,9 +85,6 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 		NotTags:     net.Filter.NotTags,
 		NotTagsAny:  net.Filter.NotTagsAny,
 	}
-	if network.ID == "" {
-		network.ID = net.Filter.ID
-	}
 
 	tags := net.PortTags
 
@@ -95,14 +92,7 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 		// Case: network is undefined and only has subnets
 		// Create a port for each subnet
 		for _, subnet := range net.Subnets {
-			if subnet.Filter.ID == "" {
-				subnet.Filter.ID = subnet.UUID
-			}
-
-			subnetID := subnet.UUID
-			if subnetID == "" {
-				subnetID = subnet.Filter.ID
-			}
+			subnet.Filter.ID = coalesce(subnet.UUID, subnet.Filter.ID)
 
 			fixedIP := []capov1.FixedIP{
 				{
@@ -115,7 +105,7 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 						CIDR:            subnet.Filter.CIDR,
 						IPv6AddressMode: subnet.Filter.IPv6AddressMode,
 						IPv6RAMode:      subnet.Filter.IPv6RAMode,
-						ID:              subnetID,
+						ID:              subnet.Filter.ID,
 						Tags:            subnet.Filter.Tags,
 						TagsAny:         subnet.Filter.TagsAny,
 						NotTags:         subnet.Filter.NotTags,
@@ -157,11 +147,6 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 		// Create a single port with an interface for each subnet
 		fixedIPs := make([]capov1.FixedIP, len(net.Subnets))
 		for i, subnet := range net.Subnets {
-			id := subnet.UUID
-			if id == "" {
-				id = subnet.Filter.ID
-			}
-
 			fixedIPs[i] = capov1.FixedIP{
 				Subnet: &capov1.SubnetFilter{
 					Name:            subnet.Filter.Name,
@@ -172,7 +157,7 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 					CIDR:            subnet.Filter.CIDR,
 					IPv6AddressMode: subnet.Filter.IPv6AddressMode,
 					IPv6RAMode:      subnet.Filter.IPv6RAMode,
-					ID:              id,
+					ID:              coalesce(subnet.UUID, subnet.Filter.ID),
 					Tags:            subnet.Filter.Tags,
 					TagsAny:         subnet.Filter.TagsAny,
 					NotTags:         subnet.Filter.NotTags,
