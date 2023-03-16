@@ -9,6 +9,7 @@ import (
 	"time"
 
 	machineproviderv1 "github.com/openshift/machine-api-provider-openstack/pkg/apis/openstackproviderconfig/v1alpha1"
+	"github.com/openshift/machine-api-provider-openstack/pkg/machineset/flavorcache"
 
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	. "github.com/onsi/ginkgo"
@@ -74,7 +75,7 @@ var _ = Describe("Reconciler", func() {
 	var c client.Client
 	var fakeRecorder *record.FakeRecorder
 	var namespace *corev1.Namespace
-	var suiteFlavorCache = newMachineFlavorCache()
+	var suiteFlavorCache = flavorcache.New()
 	var suiteInstanceService = &MockInstanceService{
 		flavor: &mockFlavor,
 	}
@@ -286,7 +287,7 @@ func TestReconcile(t *testing.T) {
 				instanceService: &MockInstanceService{
 					flavor: &mockFlavor,
 				},
-				flavorCache: newMachineFlavorCache(),
+				flavorCache: flavorcache.New(),
 			}
 
 			//Get a machineset

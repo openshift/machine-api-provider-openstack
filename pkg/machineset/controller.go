@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
+	"github.com/openshift/machine-api-provider-openstack/pkg/machineset/flavorcache"
 
 	"github.com/go-logr/logr"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
@@ -41,7 +42,7 @@ type Reconciler struct {
 	scheme          *runtime.Scheme
 	kubeClient      *kubernetes.Clientset
 	instanceService OpenStackInstanceService
-	flavorCache     *machineFlavorsCache
+	flavorCache     *flavorcache.Cache
 }
 
 // Reconcile implements controller runtime Reconciler interface.
@@ -91,7 +92,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrlRuntime.Request) (ct
 func requeueTime() time.Duration {
 	// Currently depends on caches refresh failure time, which is how long the cache will wait before
 	// retrying to refresh the information of a failed look up.
-	return RefreshFailureTime / 2
+	return flavorcache.RefreshFailureTime / 2
 }
 func (r *Reconciler) reconcile(machineSet *machinev1.MachineSet) (ctrlRuntime.Result, error) {
 	pSpec, err := clients.MachineSpecFromProviderSpec(machineSet.Spec.Template.Spec.ProviderSpec)
@@ -106,14 +107,14 @@ func (r *Reconciler) reconcile(machineSet *machinev1.MachineSet) (ctrlRuntime.Re
 		machineSet.Annotations = make(map[string]string)
 	}
 
-	flavorInfo := r.flavorCache.getFlavorInfo(r.instanceService, pSpec.Flavor)
-	if flavorInfo == nil {
+	flavorInfo, err := r.flavorCache.Get(r.instanceService, pSpec.Flavor)
+	if err != nil {
 		// At this time we don't have enough information to set correct annotations
 		// so we inform the controller it needs to requeue the request.
 		return ctrlRuntime.Result{
 			Requeue:      true,
 			RequeueAfter: requeueTime(),
-		}, fmt.Errorf("could not find information for %q", pSpec.Flavor)
+		}, fmt.Errorf("failed to find information for %q: %w", pSpec.Flavor, err)
 	}
 
 	machineSet.Annotations[cpuKey] = strconv.Itoa(flavorInfo.VCPUs)
@@ -145,7 +146,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrlRuntime.Manager, options controlle
 	if err != nil {
 		return fmt.Errorf("could not create kubernetes client to talk to the API server: %w", err)
 	}
-	r.flavorCache = newMachineFlavorCache()
+	r.flavorCache = flavorcache.New()
 
 	return nil
 }
