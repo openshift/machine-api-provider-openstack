@@ -15,6 +15,7 @@ import (
 	gtypes "github.com/onsi/gomega/types"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
+	"github.com/openshift/machine-api-provider-openstack/pkg/machineset/flavorcache"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -73,7 +74,7 @@ var _ = Describe("Reconciler", func() {
 	var c client.Client
 	var fakeRecorder *record.FakeRecorder
 	var namespace *corev1.Namespace
-	var suiteFlavorCache = newMachineFlavorCache()
+	var suiteFlavorCache = flavorcache.New()
 	var suiteInstanceService = &MockInstanceService{
 		flavor: &mockFlavor,
 	}
@@ -285,7 +286,7 @@ func TestReconcile(t *testing.T) {
 				instanceService: &MockInstanceService{
 					flavor: &mockFlavor,
 				},
-				flavorCache: newMachineFlavorCache(),
+				flavorCache: flavorcache.New(),
 			}
 
 			//Get a machineset
