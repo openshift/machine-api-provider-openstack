@@ -36,13 +36,12 @@ type OpenStackInstanceService interface {
 }
 
 type Reconciler struct {
-	Client          client.Client
-	Log             logr.Logger
-	eventRecorder   record.EventRecorder
-	scheme          *runtime.Scheme
-	kubeClient      *kubernetes.Clientset
-	instanceService OpenStackInstanceService
-	flavorCache     *flavorcache.Cache
+	Client        client.Client
+	Log           logr.Logger
+	eventRecorder record.EventRecorder
+	scheme        *runtime.Scheme
+	kubeClient    *kubernetes.Clientset
+	flavorCache   *flavorcache.Cache
 }
 
 // Reconcile implements controller runtime Reconciler interface.
@@ -67,17 +66,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrlRuntime.Request) (ct
 
 	originalMachineSetPatch := client.MergeFrom(machineSet.DeepCopy())
 
-	if r.instanceService == nil {
-		//Create the OpenStack InstanceService if we don't have one already.
-		m := &machinev1.Machine{Spec: machineSet.Spec.Template.Spec}
-		is, err := clients.NewInstanceServiceFromMachine(r.kubeClient, m)
-		if err != nil {
-			return ctrlRuntime.Result{}, fmt.Errorf("failed to get InstanceService: %v", err)
-		}
-		r.instanceService = is
-	}
 	//reconcile the machine set and patch  even if reconcile failed.
-	result, err := r.reconcile(machineSet)
+	result, err := r.reconcile(ctx, machineSet)
 	if err != nil {
 		logger.Error(err, "Failed to reconcile MachineSet %q", machineSet.Name)
 		r.eventRecorder.Eventf(machineSet, corev1.EventTypeWarning, "ReconcileError", "%v", err)
@@ -94,7 +84,7 @@ func requeueTime() time.Duration {
 	// retrying to refresh the information of a failed look up.
 	return flavorcache.RefreshFailureTime / 2
 }
-func (r *Reconciler) reconcile(machineSet *machinev1.MachineSet) (ctrlRuntime.Result, error) {
+func (r *Reconciler) reconcile(ctx context.Context, machineSet *machinev1.MachineSet) (ctrlRuntime.Result, error) {
 	pSpec, err := clients.MachineSpecFromProviderSpec(machineSet.Spec.Template.Spec.ProviderSpec)
 	if err != nil {
 		return ctrlRuntime.Result{}, fmt.Errorf("failed to get OpenStackProviderSpec from machineset: %v", err)
@@ -107,7 +97,19 @@ func (r *Reconciler) reconcile(machineSet *machinev1.MachineSet) (ctrlRuntime.Re
 		machineSet.Annotations = make(map[string]string)
 	}
 
-	flavorInfo, err := r.flavorCache.Get(r.instanceService, pSpec.Flavor)
+	var instanceService OpenStackInstanceService
+	if injected, ok := ctx.Value("injected instanceService").(OpenStackInstanceService); ok {
+		instanceService = injected
+	} else {
+		m := &machinev1.Machine{Spec: machineSet.Spec.Template.Spec}
+		is, err := clients.NewInstanceServiceFromMachine(r.kubeClient, m)
+		if err != nil {
+			return ctrlRuntime.Result{}, fmt.Errorf("failed to get InstanceService: %v", err)
+		}
+		instanceService = is
+	}
+
+	flavorInfo, err := r.flavorCache.Get(instanceService, pSpec.Flavor)
 	if err != nil {
 		// At this time we don't have enough information to set correct annotations
 		// so we inform the controller it needs to requeue the request.
