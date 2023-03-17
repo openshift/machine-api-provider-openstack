@@ -1,6 +1,7 @@
 package machineset
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -86,9 +87,7 @@ var _ = Describe("Reconciler", func() {
 		mgr, err := manager.New(cfg, manager.Options{MetricsBindAddress: "0", Namespace: namespace.Name})
 		Expect(err).ToNot(HaveOccurred())
 
-		r := Reconciler{
-			instanceService: suiteInstanceService,
-		}
+		r := Reconciler{}
 
 		Expect(r.SetupWithManager(mgr, controller.Options{})).To(Succeed())
 
@@ -96,7 +95,7 @@ var _ = Describe("Reconciler", func() {
 		r.eventRecorder = fakeRecorder
 		r.flavorCache = suiteFlavorCache
 		c = mgr.GetClient()
-		StartTestManager(mgr)
+		StartTestManager(context.WithValue(ctx, "injected instanceService", suiteInstanceService), mgr)
 
 		Expect(c.Create(ctx, namespace)).To(Succeed())
 	})
@@ -282,11 +281,12 @@ func TestReconcile(t *testing.T) {
 		t.Run(tc.name, func(tt *testing.T) {
 			g := NewWithT(tt)
 
+			serviceClient := &MockInstanceService{
+				flavor: &mockFlavor,
+			}
+
 			//Create reconciler
 			r := Reconciler{
-				instanceService: &MockInstanceService{
-					flavor: &mockFlavor,
-				},
 				flavorCache: flavorcache.New(),
 			}
 
@@ -295,7 +295,7 @@ func TestReconcile(t *testing.T) {
 			g.Expect(err).ToNot(HaveOccurred())
 
 			//Use the reconciler we create to reconcile the machineset
-			_, err = r.reconcile(machineSet)
+			_, err = r.reconcile(context.WithValue(ctx, "injected instanceService", serviceClient), machineSet)
 			g.Expect(err != nil).To(Equal(tc.expectErr))
 			g.Expect(machineSet.Annotations).To(Equal(tc.expectedAnnotations))
 		})

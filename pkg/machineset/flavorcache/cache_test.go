@@ -88,6 +88,7 @@ func (s *instanceService) GetFlavorID(flavorName string) (string, error) {
 	return "", fmt.Errorf("flavor name NOT FOUND")
 }
 func (s *instanceService) GetFlavorInfo(flavorID string) (flavor *flavors.Flavor, err error) {
+	s.wasCalled = true
 	if flavorID == s.flavorID {
 		return s.flavorInfo, s.flavorInfoError
 	}
