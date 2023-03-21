@@ -1,6 +1,7 @@
 package machineset
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -15,6 +16,7 @@ import (
 	gtypes "github.com/onsi/gomega/types"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
+	"github.com/openshift/machine-api-provider-openstack/pkg/machineset/flavorcache"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -73,7 +75,7 @@ var _ = Describe("Reconciler", func() {
 	var c client.Client
 	var fakeRecorder *record.FakeRecorder
 	var namespace *corev1.Namespace
-	var suiteFlavorCache = newMachineFlavorCache()
+	var suiteFlavorCache = flavorcache.New()
 	var suiteInstanceService = &MockInstanceService{
 		flavor: &mockFlavor,
 	}
@@ -84,9 +86,7 @@ var _ = Describe("Reconciler", func() {
 		mgr, err := manager.New(cfg, manager.Options{MetricsBindAddress: "0", Namespace: namespace.Name})
 		Expect(err).ToNot(HaveOccurred())
 
-		r := Reconciler{
-			instanceService: suiteInstanceService,
-		}
+		r := Reconciler{}
 
 		Expect(r.SetupWithManager(mgr, controller.Options{})).To(Succeed())
 
@@ -94,7 +94,7 @@ var _ = Describe("Reconciler", func() {
 		r.eventRecorder = fakeRecorder
 		r.flavorCache = suiteFlavorCache
 		c = mgr.GetClient()
-		StartTestManager(mgr)
+		StartTestManager(context.WithValue(ctx, "injected instanceService", suiteInstanceService), mgr)
 
 		Expect(c.Create(ctx, namespace)).To(Succeed())
 	})
@@ -280,12 +280,13 @@ func TestReconcile(t *testing.T) {
 		t.Run(tc.name, func(tt *testing.T) {
 			g := NewWithT(tt)
 
+			serviceClient := &MockInstanceService{
+				flavor: &mockFlavor,
+			}
+
 			//Create reconciler
 			r := Reconciler{
-				instanceService: &MockInstanceService{
-					flavor: &mockFlavor,
-				},
-				flavorCache: newMachineFlavorCache(),
+				flavorCache: flavorcache.New(),
 			}
 
 			//Get a machineset
@@ -293,7 +294,7 @@ func TestReconcile(t *testing.T) {
 			g.Expect(err).ToNot(HaveOccurred())
 
 			//Use the reconciler we create to reconcile the machineset
-			_, err = r.reconcile(machineSet)
+			_, err = r.reconcile(context.WithValue(ctx, "injected instanceService", serviceClient), machineSet)
 			g.Expect(err != nil).To(Equal(tc.expectErr))
 			g.Expect(machineSet.Annotations).To(Equal(tc.expectedAnnotations))
 		})
