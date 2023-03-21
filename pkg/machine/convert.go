@@ -10,16 +10,19 @@ import (
 	"github.com/openshift/machine-api-provider-openstack/pkg/utils"
 	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha5"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
-	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
 )
 
+type subnetsGetter interface {
+	GetSubnetsByFilter(opts subnets.ListOptsBuilder) ([]subnets.Subnet, error)
+}
+
 // Looks up a subnet in openstack and gets the ID of the network its attached to
-func getNetworkID(filter *machinev1alpha1.SubnetFilter, networkService *networking.Service) (string, error) {
+func getNetworkID(filter *machinev1alpha1.SubnetFilter, networkService subnetsGetter) (string, error) {
 	listOpts := subnets.ListOpts{
 		Name:            filter.Name,
 		Description:     filter.Description,
-		TenantID:        filter.TenantID,
 		ProjectID:       filter.ProjectID,
+		TenantID:        filter.TenantID,
 		IPVersion:       filter.IPVersion,
 		GatewayIP:       filter.GatewayIP,
 		CIDR:            filter.CIDR,
@@ -44,7 +47,7 @@ func getNetworkID(filter *machinev1alpha1.SubnetFilter, networkService *networki
 }
 
 // Converts NetworkParams to capov1 portOpts
-func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ingressVIPs []string, trunk *bool, networkService *networking.Service, ignoreAddressPairs bool) ([]capov1.PortOpts, error) {
+func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ingressVIPs []string, trunk *bool, networkService subnetsGetter, ignoreAddressPairs bool) ([]capov1.PortOpts, error) {
 	ports := []capov1.PortOpts{}
 
 	addressPairs := []capov1.AddressPair{}
@@ -73,17 +76,14 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 	}
 
 	network := capov1.NetworkFilter{
-		ID:          net.UUID,
+		ID:          coalesce(net.UUID, net.Filter.ID),
 		Name:        net.Filter.Name,
 		Description: net.Filter.Description,
-		ProjectID:   net.Filter.ProjectID,
+		ProjectID:   coalesce(net.Filter.ProjectID, net.Filter.TenantID),
 		Tags:        net.Filter.Tags,
 		TagsAny:     net.Filter.TagsAny,
 		NotTags:     net.Filter.NotTags,
 		NotTagsAny:  net.Filter.NotTagsAny,
-	}
-	if network.ID == "" {
-		network.ID = net.Filter.ID
 	}
 
 	tags := net.PortTags
@@ -92,27 +92,20 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 		// Case: network is undefined and only has subnets
 		// Create a port for each subnet
 		for _, subnet := range net.Subnets {
-			if subnet.Filter.ID == "" {
-				subnet.Filter.ID = subnet.UUID
-			}
-
-			subnetID := subnet.UUID
-			if subnetID == "" {
-				subnetID = subnet.Filter.ID
-			}
+			subnet.Filter.ID = coalesce(subnet.UUID, subnet.Filter.ID)
 
 			fixedIP := []capov1.FixedIP{
 				{
 					Subnet: &capov1.SubnetFilter{
 						Name:            subnet.Filter.Name,
 						Description:     subnet.Filter.Description,
-						ProjectID:       subnet.Filter.ProjectID,
+						ProjectID:       coalesce(subnet.Filter.ProjectID, subnet.Filter.TenantID),
 						IPVersion:       subnet.Filter.IPVersion,
 						GatewayIP:       subnet.Filter.GatewayIP,
 						CIDR:            subnet.Filter.CIDR,
 						IPv6AddressMode: subnet.Filter.IPv6AddressMode,
 						IPv6RAMode:      subnet.Filter.IPv6RAMode,
-						ID:              subnetID,
+						ID:              subnet.Filter.ID,
 						Tags:            subnet.Filter.Tags,
 						TagsAny:         subnet.Filter.TagsAny,
 						NotTags:         subnet.Filter.NotTags,
@@ -154,22 +147,17 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 		// Create a single port with an interface for each subnet
 		fixedIPs := make([]capov1.FixedIP, len(net.Subnets))
 		for i, subnet := range net.Subnets {
-			id := subnet.UUID
-			if id == "" {
-				id = subnet.Filter.ID
-			}
-
 			fixedIPs[i] = capov1.FixedIP{
 				Subnet: &capov1.SubnetFilter{
 					Name:            subnet.Filter.Name,
 					Description:     subnet.Filter.Description,
-					ProjectID:       subnet.Filter.ProjectID,
+					ProjectID:       coalesce(subnet.Filter.ProjectID, subnet.Filter.TenantID),
 					IPVersion:       subnet.Filter.IPVersion,
 					GatewayIP:       subnet.Filter.GatewayIP,
 					CIDR:            subnet.Filter.CIDR,
 					IPv6AddressMode: subnet.Filter.IPv6AddressMode,
 					IPv6RAMode:      subnet.Filter.IPv6RAMode,
-					ID:              id,
+					ID:              coalesce(subnet.UUID, subnet.Filter.ID),
 					Tags:            subnet.Filter.Tags,
 					TagsAny:         subnet.Filter.TagsAny,
 					NotTags:         subnet.Filter.NotTags,
@@ -206,7 +194,7 @@ func injectDefaultTags(instanceSpec *compute.InstanceSpec, machine *machinev1bet
 	instanceSpec.Tags = append(instanceSpec.Tags, defaultTags...)
 }
 
-func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, networkService *networking.Service, instanceService *clients.InstanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
+func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, networkService subnetsGetter, instanceService *clients.InstanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
 	ps, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return nil, err
@@ -272,8 +260,8 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 				ID:          secGrp.Filter.ID,
 				Name:        secGrp.Filter.Name,
 				Description: secGrp.Filter.Description,
-				TenantID:    secGrp.Filter.TenantID,
 				ProjectID:   secGrp.Filter.ProjectID,
+				TenantID:    secGrp.Filter.TenantID,
 				Tags:        secGrp.Filter.Tags,
 				TagsAny:     secGrp.Filter.TagsAny,
 				NotTags:     secGrp.Filter.NotTags,
@@ -299,9 +287,9 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 			Description:    port.Description,
 			AdminStateUp:   port.AdminStateUp,
 			MACAddress:     port.MACAddress,
+			ProjectID:      port.ProjectID,
 			TenantID:       port.TenantID,
 			FixedIPs:       make([]capov1.FixedIP, len(port.FixedIPs)),
-			ProjectID:      port.ProjectID,
 			SecurityGroups: port.SecurityGroups,
 			VNICType:       port.VNICType,
 			Profile:        port.Profile,
@@ -326,4 +314,15 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 	}
 
 	return &instanceSpec, nil
+}
+
+// coalesce returns the first value that is not the empty string, or the empty
+// string.
+func coalesce(values ...string) string {
+	for i := range values {
+		if values[i] != "" {
+			return values[i]
+		}
+	}
+	return ""
 }
