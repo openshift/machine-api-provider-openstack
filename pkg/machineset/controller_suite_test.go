@@ -59,10 +59,10 @@ var _ = AfterSuite(func() {
 })
 
 // StartTestManager adds recFn
-func StartTestManager(mgr manager.Manager) {
+func StartTestManager(ctx context.Context, mgr manager.Manager) {
 	go func() {
 		defer GinkgoRecover()
 
-		Expect(mgr.Start(context.Background())).To(Succeed())
+		Expect(mgr.Start(ctx)).To(Succeed())
 	}()
 }
