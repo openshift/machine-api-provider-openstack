@@ -5,7 +5,7 @@ import (
 
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
-	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha5"
+	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha6"
 )
 
 type testSubnetsGetter struct{}
