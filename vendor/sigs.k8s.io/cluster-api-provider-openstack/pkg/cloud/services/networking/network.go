@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -25,11 +25,39 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 
-	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha5"
+	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha6"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/metrics"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
+	capoerrors "sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/errors"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/names"
 )
+
+var (
+	ErrFilterMatch     = fmt.Errorf("filter match error")
+	ErrMultipleMatches = multipleMatchesError{}
+	ErrNoMatches       = noMatchesError{}
+)
+
+type (
+	multipleMatchesError struct{}
+	noMatchesError       struct{}
+)
+
+func (e multipleMatchesError) Error() string {
+	return "filter matched more than one resource"
+}
+
+func (e multipleMatchesError) Is(err error) bool {
+	return err == ErrFilterMatch
+}
+
+func (e noMatchesError) Error() string {
+	return "filter matched no resources"
+}
+
+func (e noMatchesError) Is(err error) bool {
+	return err == ErrFilterMatch
+}
 
 type createOpts struct {
 	AdminStateUp        *bool  `json:"admin_state_up,omitempty"`
@@ -315,9 +343,34 @@ func (s *Service) GetSubnetsByFilter(opts subnets.ListOptsBuilder) ([]subnets.Su
 		return []subnets.Subnet{}, err
 	}
 	if len(subnetList) == 0 {
-		return nil, fmt.Errorf("no subnets could be found with the filters provided")
+		return nil, ErrNoMatches
 	}
 	return subnetList, nil
+}
+
+// GetSubnetByFilter gets a single subnet specified by the given SubnetFilter.
+// It returns an ErrFilterMatch if no or multiple subnets are found.
+func (s *Service) GetSubnetByFilter(filter *infrav1.SubnetFilter) (*subnets.Subnet, error) {
+	// If the ID is set, we can just get the subnet by ID.
+	if filter.ID != "" {
+		subnet, err := s.client.GetSubnet(filter.ID)
+		if capoerrors.IsNotFound(err) {
+			return nil, ErrNoMatches
+		}
+		return subnet, err
+	}
+
+	subnets, err := s.GetSubnetsByFilter(filter.ToListOpt())
+	if err != nil {
+		return nil, err
+	}
+	if len(subnets) == 0 {
+		return nil, ErrNoMatches
+	}
+	if len(subnets) > 1 {
+		return nil, ErrMultipleMatches
+	}
+	return &subnets[0], nil
 }
 
 func getSubnetName(clusterName string) string {
