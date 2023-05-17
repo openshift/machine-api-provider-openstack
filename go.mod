@@ -1,6 +1,6 @@
 module github.com/openshift/machine-api-provider-openstack
 
-go 1.18
+go 1.19
 
 require (
 	github.com/coreos/container-linux-config-transpiler v0.9.0
@@ -89,9 +89,9 @@ require (
 	go4.org v0.0.0-20201209231011-d4a079459e60 // indirect
 	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20221014153046-6fdb5e3db783 // indirect
-	golang.org/x/sys v0.4.0 // indirect
-	golang.org/x/term v0.4.0 // indirect
-	golang.org/x/text v0.6.0 // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/term v0.5.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
@@ -114,6 +114,7 @@ require (
 )
 
 replace (
+	golang.org/x/net => golang.org/x/net v0.7.0
 	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.3.0-rc.0.0.20230131103650-2c89700e11b0
 	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.6.3
 )
