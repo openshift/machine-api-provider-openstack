@@ -25,7 +25,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 
-	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha5"
+	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha6"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 	capoRecorder "sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
 
@@ -325,7 +325,7 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 		return err
 	}
 
-	err = computeService.DeleteInstance(machine, instanceSpec, instanceStatus)
+	err = computeService.DeleteInstance(machine, instanceStatus, machine.Name, instanceSpec.RootVolume)
 	if err != nil {
 		return err
 	}

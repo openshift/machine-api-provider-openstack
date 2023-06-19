@@ -98,9 +98,6 @@ github.com/gogo/protobuf/sortkeys
 # github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 ## explicit
 github.com/golang/groupcache/lru
-# github.com/golang/mock v1.6.0
-## explicit; go 1.11
-github.com/golang/mock/gomock
 # github.com/golang/protobuf v1.5.2
 ## explicit; go 1.9
 github.com/golang/protobuf/proto
@@ -155,6 +152,13 @@ github.com/gophercloud/gophercloud/openstack/identity/v3/extensions/ec2tokens
 github.com/gophercloud/gophercloud/openstack/identity/v3/extensions/oauth1
 github.com/gophercloud/gophercloud/openstack/identity/v3/tokens
 github.com/gophercloud/gophercloud/openstack/imageservice/v2/images
+github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/apiversions
+github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/l7policies
+github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/listeners
+github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/loadbalancers
+github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/monitors
+github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/pools
+github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/providers
 github.com/gophercloud/gophercloud/openstack/networking/v2/extensions
 github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/attributestags
 github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/external
@@ -357,7 +361,7 @@ go.starlark.net/syntax
 # go4.org v0.0.0-20201209231011-d4a079459e60
 ## explicit; go 1.13
 go4.org/errorutil
-# golang.org/x/net v0.5.0
+# golang.org/x/net v0.7.0
 ## explicit; go 1.17
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
@@ -374,16 +378,16 @@ golang.org/x/net/proxy
 ## explicit; go 1.17
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sys v0.4.0
+# golang.org/x/sys v0.5.0
 ## explicit; go 1.17
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/term v0.4.0
+# golang.org/x/term v0.5.0
 ## explicit; go 1.17
 golang.org/x/term
-# golang.org/x/text v0.6.0
+# golang.org/x/text v0.7.0
 ## explicit; go 1.17
 golang.org/x/text/cases
 golang.org/x/text/encoding
@@ -798,7 +802,7 @@ k8s.io/utils/net
 k8s.io/utils/pointer
 k8s.io/utils/strings/slices
 k8s.io/utils/trace
-# sigs.k8s.io/cluster-api v1.1.3 => sigs.k8s.io/cluster-api v1.3.0-rc.0.0.20230131103650-2c89700e11b0
+# sigs.k8s.io/cluster-api v1.3.1 => sigs.k8s.io/cluster-api v1.3.0-rc.0.0.20230131103650-2c89700e11b0
 ## explicit; go 1.19
 sigs.k8s.io/cluster-api/api/v1beta1
 sigs.k8s.io/cluster-api/errors
@@ -806,16 +810,19 @@ sigs.k8s.io/cluster-api/internal/labels
 sigs.k8s.io/cluster-api/util
 sigs.k8s.io/cluster-api/util/annotations
 sigs.k8s.io/cluster-api/util/contract
+sigs.k8s.io/cluster-api/util/topology
 sigs.k8s.io/cluster-api/util/version
-# sigs.k8s.io/cluster-api-provider-openstack v0.6.3 => github.com/openshift/cluster-api-provider-openstack v0.6.3
-## explicit; go 1.17
-sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha5
+# sigs.k8s.io/cluster-api-provider-openstack v0.6.3 => github.com/openshift/cluster-api-provider-openstack v0.7.2
+## explicit; go 1.19
+sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha6
+sigs.k8s.io/cluster-api-provider-openstack/pkg/clients
 sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute
 sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking
 sigs.k8s.io/cluster-api-provider-openstack/pkg/metrics
 sigs.k8s.io/cluster-api-provider-openstack/pkg/record
 sigs.k8s.io/cluster-api-provider-openstack/pkg/scope
 sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/errors
+sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/hash
 sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/names
 # sigs.k8s.io/controller-runtime v0.14.2
 ## explicit; go 1.19
@@ -964,4 +971,4 @@ sigs.k8s.io/structured-merge-diff/v4/value
 ## explicit; go 1.12
 sigs.k8s.io/yaml
 # sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.3.0-rc.0.0.20230131103650-2c89700e11b0
-# sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.6.3
+# sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.7.2
