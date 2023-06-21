@@ -5,8 +5,8 @@ go 1.18
 require (
 	github.com/coreos/container-linux-config-transpiler v0.9.0
 	github.com/go-logr/logr v1.2.3
-	github.com/gophercloud/gophercloud v1.1.1
-	github.com/gophercloud/utils v0.0.0-20221207145018-e8fba78967ca
+	github.com/gophercloud/gophercloud v1.5.0
+	github.com/gophercloud/utils v0.0.0-20230523080330-de873b9cf00d
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.26.0
 	github.com/openshift/api v0.0.0-20230208193339-068b2ae5534f
@@ -56,6 +56,7 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7 // indirect
+	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/imdario/mergo v0.3.13 // indirect
 	github.com/inconshreveable/mousetrap v1.0.1 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
