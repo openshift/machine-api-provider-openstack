@@ -104,7 +104,7 @@ func networkParamToCapov1PortOpt(net *openstackconfigv1.NetworkParam, apiVIP, in
 		ID:          net.UUID,
 		Name:        net.Filter.Name,
 		Description: net.Filter.Description,
-		ProjectID:   net.Filter.ProjectID,
+		ProjectID:   coalesce(net.Filter.ProjectID, net.Filter.TenantID),
 		Tags:        net.Filter.Tags,
 		TagsAny:     net.Filter.TagsAny,
 		NotTags:     net.Filter.NotTags,
@@ -134,7 +134,7 @@ func networkParamToCapov1PortOpt(net *openstackconfigv1.NetworkParam, apiVIP, in
 					Subnet: &capov1.SubnetFilter{
 						Name:            subnet.Filter.Name,
 						Description:     subnet.Filter.Description,
-						ProjectID:       subnet.Filter.ProjectID,
+						ProjectID:       coalesce(subnet.Filter.ProjectID, subnet.Filter.TenantID),
 						IPVersion:       subnet.Filter.IPVersion,
 						GatewayIP:       subnet.Filter.GatewayIP,
 						CIDR:            subnet.Filter.CIDR,
@@ -188,7 +188,7 @@ func networkParamToCapov1PortOpt(net *openstackconfigv1.NetworkParam, apiVIP, in
 				Subnet: &capov1.SubnetFilter{
 					Name:            subnet.Filter.Name,
 					Description:     subnet.Filter.Description,
-					ProjectID:       subnet.Filter.ProjectID,
+					ProjectID:       coalesce(subnet.Filter.ProjectID, subnet.Filter.TenantID),
 					IPVersion:       subnet.Filter.IPVersion,
 					GatewayIP:       subnet.Filter.GatewayIP,
 					CIDR:            subnet.Filter.CIDR,
@@ -336,4 +336,15 @@ func MachineToInstanceSpec(machine *machinev1.Machine, apiVIP, ingressVIP, userD
 	}
 
 	return &instanceSpec, nil
+}
+
+// coalesce returns the first value that is not the empty string, or the empty
+// string.
+func coalesce(values ...string) string {
+	for i := range values {
+		if values[i] != "" {
+			return values[i]
+		}
+	}
+	return ""
 }
