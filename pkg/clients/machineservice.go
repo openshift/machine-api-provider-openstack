@@ -58,7 +58,7 @@ func NewInstanceServiceFromCloud(cloud clientconfig.Cloud, cert []byte) (*Instan
 		return nil, err
 	}
 
-	serverClient, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
+	computeClient, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
 		Region: cloud.RegionName,
 	})
 	if err != nil {
@@ -73,7 +73,7 @@ func NewInstanceServiceFromCloud(cloud clientconfig.Cloud, cert []byte) (*Instan
 	}
 
 	return &InstanceService{
-		computeClient: serverClient,
+		computeClient: computeClient,
 		imagesClient:  imagesClient,
 	}, nil
 }
