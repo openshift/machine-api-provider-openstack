@@ -13,6 +13,7 @@ import (
 	"github.com/gophercloud/utils/openstack/clientconfig"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1 "github.com/openshift/api/machine/v1beta1"
+	"github.com/openshift/machine-api-provider-openstack/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -85,6 +86,11 @@ func GetProviderClient(cloud clientconfig.Cloud, cert []byte) (*gophercloud.Prov
 	if err != nil {
 		return nil, fmt.Errorf("Create new provider client failed: %v", err)
 	}
+
+	// we represent version using commits since we don't tag releases
+	ua := gophercloud.UserAgent{}
+	ua.Prepend(fmt.Sprintf("machine-api-provider-openstack/%s", version.Get().GitCommit))
+	provider.UserAgent = ua
 
 	if cert != nil {
 		certPool, err := x509.SystemCertPool()
