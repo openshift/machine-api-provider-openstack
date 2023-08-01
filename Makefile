@@ -18,7 +18,7 @@ build: manager
 manager:
 	CGO_ENABLED=0 GOOS=$(GOOS) go build \
 		-ldflags $(LDFLAGS) \
-		-o bin/manager \
+		-o machine-controller-manager \
 		cmd/manager/main.go
 
 
