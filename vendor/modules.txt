@@ -56,6 +56,8 @@ github.com/coreos/ignition/config/validate/report
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew
+# github.com/elazarl/goproxy v0.0.0-20230731152917-f99041a5c027 => github.com/elazarl/goproxy v0.0.0-20230731152917-f99041a5c027
+## explicit
 # github.com/emicklei/go-restful/v3 v3.9.0
 ## explicit; go 1.13
 github.com/emicklei/go-restful/v3
@@ -973,5 +975,6 @@ sigs.k8s.io/structured-merge-diff/v4/value
 # sigs.k8s.io/yaml v1.3.0
 ## explicit; go 1.12
 sigs.k8s.io/yaml
+# github.com/elazarl/goproxy => github.com/elazarl/goproxy v0.0.0-20230731152917-f99041a5c027
 # sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.3.0-rc.0.0.20230131103650-2c89700e11b0
 # sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.7.2
