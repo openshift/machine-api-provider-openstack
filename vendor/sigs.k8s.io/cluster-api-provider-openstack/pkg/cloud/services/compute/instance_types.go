@@ -156,12 +156,6 @@ func (is *InstanceStatus) NetworkStatus() (*InstanceNetworkStatus, error) {
 		for i := range interfaceList {
 			address := &interfaceList[i]
 
-			// Only consider IPv4
-			if address.Version != 4 {
-				is.logger.V(6).Info("Ignoring IP address: only IPv4 is supported", "version", address.Version, "address", address.Address)
-				continue
-			}
-
 			var addressType corev1.NodeAddressType
 			switch address.Type {
 			case "floating":
