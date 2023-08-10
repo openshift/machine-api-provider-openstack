@@ -18,12 +18,14 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"time"
 
 	"github.com/openshift/machine-api-provider-openstack/pkg/machine"
 	"github.com/openshift/machine-api-provider-openstack/pkg/machineset"
+	"github.com/openshift/machine-api-provider-openstack/version"
 
 	configv1 "github.com/openshift/api/config/v1"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
@@ -87,8 +89,20 @@ func main() {
 		"Address for hosting metrics",
 	)
 
+	showVersion := flag.Bool(
+		"version",
+		false,
+		"Show current version",
+	)
+
 	klog.InitFlags(nil)
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version.Get())
+		fmt.Println(version.Get().GitCommit)
+		os.Exit(0)
+	}
 
 	// Get a config to talk to the apiserver
 	cfg, err := config.GetConfig()
