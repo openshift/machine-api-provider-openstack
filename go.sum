@@ -300,8 +300,8 @@ github.com/openshift/api v0.0.0-20230208193339-068b2ae5534f h1:+GaTEfR8gYzh64fdl
 github.com/openshift/api v0.0.0-20230208193339-068b2ae5534f/go.mod h1:ctXNyWanKEjGj8sss1KjjHQ3ENKFm33FFnS5BKaIPh4=
 github.com/openshift/client-go v0.0.0-20220905192401-849f725bff84 h1:gYG9iZHamA68gvKynYAdFNPCIduKpDNE2fOunGR1hH8=
 github.com/openshift/client-go v0.0.0-20220905192401-849f725bff84/go.mod h1:7JJKW++yzjdBscli7ToB4Ln5HQOhkvB9po3uNFcsP34=
-github.com/openshift/cluster-api-provider-openstack v0.7.2 h1:XDiXwT69Ynji+XyQNdP2ixWzzGfLvMbnrCADnShACwY=
-github.com/openshift/cluster-api-provider-openstack v0.7.2/go.mod h1:/hp/GE58MGbxSRErYBx/PJj5+bxgWexJAzLqho+HZR4=
+github.com/openshift/cluster-api-provider-openstack v0.7.3-0.20230814121631-021041b47806 h1:hD90gpdj5YR+P6k2xf/oIcMVldqauCgZ1xeBb2DGjxM=
+github.com/openshift/cluster-api-provider-openstack v0.7.3-0.20230814121631-021041b47806/go.mod h1:/hp/GE58MGbxSRErYBx/PJj5+bxgWexJAzLqho+HZR4=
 github.com/openshift/library-go v0.0.0-20220525173854-9b950a41acdc h1:j+upvKc1uLzuL+q/JXie8+IMohOooTCaEC9w+4d1Ztk=
 github.com/openshift/library-go v0.0.0-20220525173854-9b950a41acdc/go.mod h1:AMZwYwSdbvALDl3QobEzcJ2IeDO7DYLsr42izKzh524=
 github.com/openshift/machine-api-operator v0.2.1-0.20220905154315-25dae44130fc h1:e5vDhbymlf8844PRd9Pknoqdm13nuLAIs3wYWmUMzUg=

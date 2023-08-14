@@ -117,5 +117,5 @@ require (
 replace (
 	github.com/elazarl/goproxy => github.com/elazarl/goproxy v0.0.0-20230731152917-f99041a5c027
 	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.3.0-rc.0.0.20230131103650-2c89700e11b0
-	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.7.2
+	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.7.3-0.20230814121631-021041b47806
 )
