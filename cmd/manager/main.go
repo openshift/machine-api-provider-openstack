@@ -49,6 +49,7 @@ var (
 	leaseDuration = 120 * time.Second
 	renewDeadline = 110 * time.Second
 	retryPeriod   = 20 * time.Second
+	syncPeriod    = 1 * time.Hour
 )
 
 func main() {
@@ -121,6 +122,7 @@ func main() {
 		// Slow the default retry and renew election rate to reduce etcd writes at idle: BZ 1858400
 		RetryPeriod:   &retryPeriod,
 		RenewDeadline: &renewDeadline,
+		SyncPeriod:    &syncPeriod,
 	}
 	if *watchNamespace != "" {
 		opts.Namespace = *watchNamespace
