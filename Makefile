@@ -6,10 +6,7 @@ export TESTARGS ?= $(TESTARGS_DEFAULT)
 HAS_LINT := $(shell command -v golint;)
 
 GOOS ?= $(shell go env GOOS)
-GOFLAGS   :=
-TAGS      :=
 LDFLAGS := $(shell source ./hack/version.sh; version::ldflags)
-REGISTRY ?= k8scloudprovider
 
 # CTI targets
 
@@ -53,18 +50,6 @@ vet:
 cover:
 	go test -tags=unit $(shell go list ./...) -cover
 
-docs:
-	@echo "$@ not yet implemented"
-
-godoc:
-	@echo "$@ not yet implemented"
-
-releasenotes:
-	@echo "Reno not yet implemented for this repo"
-
-translation:
-	@echo "$@ not yet implemented"
-
 clean:
 	rm -rf _dist bin/manager
 
@@ -73,22 +58,6 @@ realclean: clean
 	if [ "$(GOPATH)" = "$(GOPATH_DEFAULT)" ]; then \
 		rm -rf $(GOPATH); \
 	fi
-
-images: openstack-cluster-api-controller
-
-openstack-cluster-api-controller: manager
-ifeq ($(GOOS),linux)
-	cp bin/manager cmd/manager
-	docker build -t $(REGISTRY)/openstack-cluster-api-controller:$(VERSION) cmd/manager
-	rm cmd/manager/manager
-else
-	$(error Please set GOOS=linux for building the image)
-endif
-
-upload-images: images
-	@echo "push images to $(REGISTRY)"
-	docker login -u="$(DOCKER_USERNAME)" -p="$(DOCKER_PASSWORD)";
-	docker push $(REGISTRY)/openstack-cluster-api-controller:$(VERSION)
 
 version:
 	@echo ${VERSION}
