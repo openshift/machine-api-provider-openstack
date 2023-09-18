@@ -100,7 +100,6 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Println(version.Get())
 		fmt.Println(version.Get().GitCommit)
 		os.Exit(0)
 	}
