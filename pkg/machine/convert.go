@@ -192,12 +192,32 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 	return ports, nil
 }
 
-func injectDefaultTags(instanceSpec *compute.InstanceSpec, machine *machinev1beta1.Machine) {
+func extractDefaultTags(machine *machinev1beta1.Machine) []string {
 	defaultTags := []string{
 		"cluster-api-provider-openstack",
 		utils.GetClusterNameWithNamespace(machine),
 	}
-	instanceSpec.Tags = append(instanceSpec.Tags, defaultTags...)
+	return defaultTags
+}
+
+// extractRootVolumeFromProviderSpec extracts pertinent root volume information from a provider spec
+func extractRootVolumeFromProviderSpec(providerSpec *machinev1alpha1.OpenstackProviderSpec) (*capov1.RootVolume, string) {
+	var rootVolume *capov1.RootVolume
+	var image string
+
+	rootVolume = &capov1.RootVolume{
+		Size:             providerSpec.RootVolume.Size,
+		VolumeType:       providerSpec.RootVolume.VolumeType,
+		AvailabilityZone: providerSpec.RootVolume.Zone,
+	}
+
+	// TODO(dulek): Installer does not populate ps.Image when ps.RootVolume is set and will instead
+	//              populate ps.RootVolume.SourceUUID. Moreover, according to the ClusterOSImage
+	//              option definition this is always the name of the image and never the UUID.
+	//              We should allow UUID at some point and this will need an update.
+	image = providerSpec.RootVolume.SourceUUID
+
+	return rootVolume, image
 }
 
 func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, networkService subnetsGetter, instanceService instanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
@@ -222,20 +242,9 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 		SecurityGroups: make([]capov1.SecurityGroupParam, len(ps.SecurityGroups)),
 	}
 
-	injectDefaultTags(&instanceSpec, machine)
-
+	instanceSpec.Tags = append(instanceSpec.Tags, extractDefaultTags(machine)...)
 	if ps.RootVolume != nil {
-		instanceSpec.RootVolume = &capov1.RootVolume{
-			Size:             ps.RootVolume.Size,
-			VolumeType:       ps.RootVolume.VolumeType,
-			AvailabilityZone: ps.RootVolume.Zone,
-		}
-
-		// TODO(dulek): Installer does not populate ps.Image when ps.RootVolume is set and will instead
-		//              populate ps.RootVolume.SourceUUID. Moreover, according to the ClusterOSImage
-		//              option definition this is always the name of the image and never the UUID.
-		//              We should allow UUID at some point and this will need an update.
-		instanceSpec.Image = ps.RootVolume.SourceUUID
+		instanceSpec.RootVolume, instanceSpec.Image = extractRootVolumeFromProviderSpec(ps)
 	}
 
 	if ps.ServerGroupName != "" && ps.ServerGroupID == "" {

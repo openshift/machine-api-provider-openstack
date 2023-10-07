@@ -324,9 +324,15 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 		return err
 	}
 
-	instanceSpec, err := oc.convertMachineToCapoInstanceSpec(osc, machine)
+	providerSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return err
+	}
+	// Create a minimal instancespec since we don't want to reparse and reconstruct all the networking info just to delete
+	rootVolume, _ := extractRootVolumeFromProviderSpec(providerSpec)
+	instanceSpec := compute.InstanceSpec{
+		Ports:      make([]capov1.PortOpts, 0, 0),
+		RootVolume: rootVolume,
 	}
 
 	err = computeService.DeleteInstance(machine, instanceStatus, machine.Name, instanceSpec.RootVolume)
