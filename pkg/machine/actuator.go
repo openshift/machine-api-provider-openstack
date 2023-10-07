@@ -123,6 +123,10 @@ func getInstanceStatus(osc *openStackContext, machine *machinev1.Machine) (*comp
 
 func (oc *OpenstackClient) convertMachineToCapoInstanceSpec(osc *openStackContext, machine *machinev1.Machine) (*compute.InstanceSpec, error) {
 	providerSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate MachineSpec object: %v", err)
+	}
+
 	clusterInfra, err := oc.params.ConfigClient.Infrastructures().Get(context.TODO(), "cluster", metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve cluster Infrastructure object: %v", err)
