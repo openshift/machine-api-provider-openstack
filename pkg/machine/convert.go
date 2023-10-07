@@ -324,11 +324,11 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 		} else if len(serverGroups) == 0 {
 			serverGroup, err := instanceService.CreateServerGroup(ps.ServerGroupName)
 			if err != nil {
-				return nil, fmt.Errorf("Error when creating a server group: %v", err)
+				return nil, fmt.Errorf("error when creating a server group: %v", err)
 			}
 			instanceSpec.ServerGroupID = serverGroup.ID
 		} else {
-			return nil, fmt.Errorf("More than one server group of name %s exists", ps.ServerGroupName)
+			return nil, fmt.Errorf("more than one server group of name %s exists", ps.ServerGroupName)
 		}
 	}
 
