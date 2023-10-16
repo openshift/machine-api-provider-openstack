@@ -25,9 +25,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 
-	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha6"
+	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
+	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
 	capoRecorder "sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
+	"sigs.k8s.io/cluster-api-provider-openstack/pkg/scope"
 
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 	"github.com/openshift/machine-api-provider-openstack/pkg/utils"
@@ -41,6 +43,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -76,16 +79,16 @@ func NewActuator(params ActuatorParams) (*OpenstackClient, error) {
 	}, nil
 }
 
-func (oc *OpenstackClient) getOpenStackContext(machine *machinev1.Machine) (*openStackContext, error) {
+func (oc *OpenstackClient) getScope(ctx context.Context, machine *machinev1.Machine) (scope.Scope, string, error) {
+	log := ctrl.LoggerFrom(ctx)
+	log = log.WithValues("machine", machine.Name)
 	cloud, err := clients.GetCloud(oc.params.KubeClient, machine)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	provider, err := clients.GetProviderClient(cloud, clients.GetCACertificate(oc.params.KubeClient))
-	if err != nil {
-		return nil, err
-	}
-	return &openStackContext{provider, &cloud, nil, nil}, nil
+	regionName := cloud.RegionName
+	scope, err := scope.NewProviderScope(cloud, clients.GetCACertificate(oc.params.KubeClient), log)
+	return scope, regionName, err
 }
 
 func (oc *OpenstackClient) setProviderID(ctx context.Context, machine *machinev1.Machine, instanceID string) error {
@@ -102,8 +105,8 @@ func (oc *OpenstackClient) setProviderID(ctx context.Context, machine *machinev1
 	return oc.client.Patch(ctx, machine, patch)
 }
 
-func getInstanceStatus(osc *openStackContext, machine *machinev1.Machine) (*compute.InstanceStatus, error) {
-	computeService, err := osc.getComputeService()
+func getInstanceStatus(scope scope.Scope, machine *machinev1.Machine) (*compute.InstanceStatus, error) {
+	computeService, err := compute.NewService(scope)
 	if err != nil {
 		return nil, err
 	}
@@ -121,14 +124,14 @@ func getInstanceStatus(osc *openStackContext, machine *machinev1.Machine) (*comp
 	return computeService.GetInstanceStatus(instanceID)
 }
 
-func (oc *OpenstackClient) convertMachineToCapoInstanceSpec(osc *openStackContext, machine *machinev1.Machine) (*compute.InstanceSpec, error) {
+func (oc *OpenstackClient) convertMachineToCapoInstanceSpec(scope scope.Scope, machine *machinev1.Machine) (*compute.InstanceSpec, error) {
 	providerSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	clusterInfra, err := oc.params.ConfigClient.Infrastructures().Get(context.TODO(), "cluster", metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve cluster Infrastructure object: %v", err)
 	}
 
-	networkService, err := osc.getNetworkService()
+	networkService, err := networking.NewService(scope)
 	if err != nil {
 		return nil, err
 	}
@@ -179,12 +182,12 @@ func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Mac
 		return maoMachine.InvalidMachineConfiguration("Cannot unmarshal providerSpec for %s: %v", machine.Name, err)
 	}
 
-	osc, err := oc.getOpenStackContext(machine)
+	scope, regionName, err := oc.getScope(ctx, machine)
 	if err != nil {
 		return err
 	}
 
-	instanceStatus, err := getInstanceStatus(osc, machine)
+	instanceStatus, err := getInstanceStatus(scope, machine)
 	if err != nil {
 		return err
 	}
@@ -195,7 +198,7 @@ func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Mac
 	// below and MAO will mark the machine failed on the next reconcile when
 	// Exists() returns false.
 	if instanceStatus == nil && machine.Spec.ProviderID == nil {
-		instanceStatus, err = oc.createInstance(ctx, machine, osc)
+		instanceStatus, err = oc.createInstance(ctx, machine, scope)
 		if err != nil {
 			return err
 		}
@@ -210,13 +213,13 @@ func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Mac
 		return fmt.Errorf("error setting provider ID for %q: %w", machine.Name, err)
 	}
 
-	if err := reconcileFloatingIP(machine, providerSpec, instanceStatus, osc); err != nil {
+	if err := reconcileFloatingIP(machine, providerSpec, instanceStatus, scope); err != nil {
 		return err
 	}
 
 	// Apply labels and annotations and patch the machine object
 	patch := client.MergeFrom(machine.DeepCopy())
-	setMachineLabels(machine, osc.cloud.RegionName, instanceStatus.AvailabilityZone(), providerSpec.Flavor)
+	setMachineLabels(machine, regionName, instanceStatus.AvailabilityZone(), providerSpec.Flavor)
 	setMachineAnnotations(machine, instanceStatus)
 	if err := oc.client.Patch(ctx, machine, patch); err != nil {
 		return err
@@ -235,24 +238,24 @@ func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Mac
 	return nil
 }
 
-func (oc *OpenstackClient) createInstance(ctx context.Context, machine *machinev1.Machine, osc *openStackContext) (*compute.InstanceStatus, error) {
+func (oc *OpenstackClient) createInstance(ctx context.Context, machine *machinev1.Machine, scope scope.Scope) (*compute.InstanceStatus, error) {
 	if err := oc.validateMachine(machine); err != nil {
 		return nil, maoMachine.InvalidMachineConfiguration("Machine validation failed: %v", err)
 	}
 
-	instanceSpec, err := oc.convertMachineToCapoInstanceSpec(osc, machine)
+	instanceSpec, err := oc.convertMachineToCapoInstanceSpec(scope, machine)
 	if err != nil {
 		return nil, err
 	}
 
-	computeService, err := osc.getComputeService()
+	computeService, err := compute.NewService(scope)
 	if err != nil {
 		return nil, err
 	}
 
 	var osCluster capov1.OpenStackCluster
 	clusterNameWithNamespace := utils.GetClusterNameWithNamespace(machine)
-	instanceStatus, err := computeService.CreateInstance(machine, &osCluster, instanceSpec, clusterNameWithNamespace)
+	instanceStatus, err := computeService.CreateInstance(machine, &osCluster, instanceSpec, clusterNameWithNamespace, false)
 	if err != nil {
 		return nil, maoMachine.CreateMachine("error creating Openstack instance: %v", err)
 	}
@@ -260,7 +263,7 @@ func (oc *OpenstackClient) createInstance(ctx context.Context, machine *machinev
 	return instanceStatus, nil
 }
 
-func reconcileFloatingIP(machine *machinev1.Machine, providerSpec *machinev1alpha1.OpenstackProviderSpec, instanceStatus *compute.InstanceStatus, osc *openStackContext) error {
+func reconcileFloatingIP(machine *machinev1.Machine, providerSpec *machinev1alpha1.OpenstackProviderSpec, instanceStatus *compute.InstanceStatus, scope scope.Scope) error {
 	if providerSpec.FloatingIP == "" {
 		return nil
 	}
@@ -277,7 +280,7 @@ func reconcileFloatingIP(machine *machinev1.Machine, providerSpec *machinev1alph
 		}
 	}
 
-	networkService, err := osc.getNetworkService()
+	networkService, err := networking.NewService(scope)
 	if err != nil {
 		return err
 	}
@@ -286,7 +289,7 @@ func reconcileFloatingIP(machine *machinev1.Machine, providerSpec *machinev1alph
 	if err != nil {
 		return fmt.Errorf("get floatingIP err: %v", err)
 	}
-	computeService, err := osc.getComputeService()
+	computeService, err := compute.NewService(scope)
 	if err != nil {
 		return err
 	}
@@ -305,7 +308,7 @@ func reconcileFloatingIP(machine *machinev1.Machine, providerSpec *machinev1alph
 }
 
 func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machine) error {
-	osc, err := oc.getOpenStackContext(machine)
+	osc, _, err := oc.getScope(ctx, machine)
 	if err != nil {
 		return err
 	}
@@ -315,7 +318,7 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 		return fmt.Errorf("error getting instance status for %q: %w", machine.Name, err)
 	}
 
-	computeService, err := osc.getComputeService()
+	computeService, err := compute.NewService(osc)
 	if err != nil {
 		return err
 	}
@@ -325,7 +328,8 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 		return err
 	}
 
-	err = computeService.DeleteInstance(machine, instanceStatus, machine.Name, instanceSpec.RootVolume)
+	var osCluster capov1.OpenStackCluster
+	err = computeService.DeleteInstance(&osCluster, machine, instanceStatus, instanceSpec)
 	if err != nil {
 		return err
 	}
@@ -396,7 +400,7 @@ func setMachineStatus(machine *machinev1.Machine, instanceStatus *compute.Instan
 }
 
 func (oc *OpenstackClient) Exists(ctx context.Context, machine *machinev1.Machine) (bool, error) {
-	osc, err := oc.getOpenStackContext(machine)
+	osc, _, err := oc.getScope(ctx, machine)
 	if err != nil {
 		return false, err
 	}

@@ -2,13 +2,14 @@ package machine
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 	"github.com/openshift/machine-api-provider-openstack/pkg/utils"
-	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha6"
+	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 )
 
@@ -123,7 +124,7 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 				VNICType:            net.VNICType,
 				FixedIPs:            fixedIP,
 				Tags:                portTags,
-				Profile:             net.Profile,
+				Profile:             portProfileToCapov1BindingProfile(net.Profile),
 			}
 
 			if len(addressPairs) > 0 {
@@ -194,6 +195,56 @@ func injectDefaultTags(instanceSpec *compute.InstanceSpec, machine *machinev1bet
 	instanceSpec.Tags = append(instanceSpec.Tags, defaultTags...)
 }
 
+func securityGroupParamToCapov1SecurityGroupFilter(psSecurityGroups []machinev1alpha1.SecurityGroupParam) []capov1.SecurityGroupFilter {
+	securityGroupFilters := make([]capov1.SecurityGroupFilter, len(psSecurityGroups))
+	for i, secGrp := range psSecurityGroups {
+		securityGroupFilters[i] = capov1.SecurityGroupFilter{
+			ID:          secGrp.Filter.ID,
+			Name:        secGrp.Filter.Name,
+			Description: secGrp.Filter.Description,
+			ProjectID:   secGrp.Filter.ProjectID,
+			Tags:        secGrp.Filter.Tags,
+			TagsAny:     secGrp.Filter.TagsAny,
+			NotTags:     secGrp.Filter.NotTags,
+			NotTagsAny:  secGrp.Filter.NotTagsAny,
+		}
+		if secGrp.UUID != "" {
+			securityGroupFilters[i].ID = secGrp.UUID
+		}
+		if secGrp.Name != "" {
+			securityGroupFilters[i].Name = secGrp.Name
+		}
+	}
+	return securityGroupFilters
+}
+
+func securityGroupsToSecurityGroupParams(securityGroups []string) []machinev1alpha1.SecurityGroupParam {
+	securityGroupsParams := make([]machinev1alpha1.SecurityGroupParam, len(securityGroups))
+	for i, secGrp := range securityGroups {
+		securityGroupsParams[i] = machinev1alpha1.SecurityGroupParam{
+			Filter: machinev1alpha1.SecurityGroupFilter{
+				ID: secGrp,
+			},
+		}
+	}
+	return securityGroupsParams
+}
+
+func portProfileToCapov1BindingProfile(portProfile map[string]string) capov1.BindingProfile {
+	bindingProfile := capov1.BindingProfile{}
+	for k, v := range portProfile {
+		if k == "capabilities" {
+			if strings.Contains(v, "switchdev") {
+				bindingProfile.OVSHWOffload = true
+			}
+		}
+		if k == "trusted" && v == "true" {
+			bindingProfile.TrustedVF = true
+		}
+	}
+	return bindingProfile
+}
+
 func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, networkService subnetsGetter, instanceService *clients.InstanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
 	ps, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
@@ -213,7 +264,7 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 		ServerGroupID:  ps.ServerGroupID,
 		Trunk:          ps.Trunk,
 		Ports:          make([]capov1.PortOpts, 0, len(ps.Ports)+len(ps.Networks)),
-		SecurityGroups: make([]capov1.SecurityGroupParam, len(ps.SecurityGroups)),
+		SecurityGroups: securityGroupParamToCapov1SecurityGroupFilter(ps.SecurityGroups),
 	}
 
 	injectDefaultTags(&instanceSpec, machine)
@@ -252,24 +303,6 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 		}
 	}
 
-	for i, secGrp := range ps.SecurityGroups {
-		instanceSpec.SecurityGroups[i] = capov1.SecurityGroupParam{
-			UUID: secGrp.UUID,
-			Name: secGrp.Name,
-			Filter: capov1.SecurityGroupFilter{
-				ID:          secGrp.Filter.ID,
-				Name:        secGrp.Filter.Name,
-				Description: secGrp.Filter.Description,
-				ProjectID:   secGrp.Filter.ProjectID,
-				TenantID:    secGrp.Filter.TenantID,
-				Tags:        secGrp.Filter.Tags,
-				TagsAny:     secGrp.Filter.TagsAny,
-				NotTags:     secGrp.Filter.NotTags,
-				NotTagsAny:  secGrp.Filter.NotTagsAny,
-			},
-		}
-	}
-
 	// The order of the networks is important, first network is the one that will be used for kubelet when
 	// the legacy cloud provider is used. Once we switch to using CCM by default, the order won't matter.
 	for _, network := range ps.Networks {
@@ -281,19 +314,18 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 	}
 
 	for _, port := range ps.Ports {
+		portSecurityGroupParams := securityGroupsToSecurityGroupParams(*port.SecurityGroups)
 		capoPort := capov1.PortOpts{
-			Network:        &capov1.NetworkFilter{ID: port.NetworkID},
-			NameSuffix:     port.NameSuffix,
-			Description:    port.Description,
-			AdminStateUp:   port.AdminStateUp,
-			MACAddress:     port.MACAddress,
-			ProjectID:      port.ProjectID,
-			TenantID:       port.TenantID,
-			FixedIPs:       make([]capov1.FixedIP, len(port.FixedIPs)),
-			SecurityGroups: port.SecurityGroups,
-			VNICType:       port.VNICType,
-			Profile:        port.Profile,
-			Trunk:          port.Trunk,
+			Network:              &capov1.NetworkFilter{ID: port.NetworkID},
+			NameSuffix:           port.NameSuffix,
+			Description:          port.Description,
+			AdminStateUp:         port.AdminStateUp,
+			MACAddress:           port.MACAddress,
+			FixedIPs:             make([]capov1.FixedIP, len(port.FixedIPs)),
+			SecurityGroupFilters: securityGroupParamToCapov1SecurityGroupFilter(portSecurityGroupParams),
+			VNICType:             port.VNICType,
+			Profile:              portProfileToCapov1BindingProfile(port.Profile),
+			Trunk:                port.Trunk,
 		}
 
 		if !ignoreAddressPairs {

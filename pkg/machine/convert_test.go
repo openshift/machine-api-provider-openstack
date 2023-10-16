@@ -1,11 +1,12 @@
 package machine
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
-	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha6"
+	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
 )
 
 type testSubnetsGetter struct{}
@@ -47,6 +48,161 @@ func withNetworkTenantID(tenantID string) func(*machinev1alpha1.NetworkParam) {
 func withSubnetParam(subnetParam machinev1alpha1.SubnetParam) func(*machinev1alpha1.NetworkParam) {
 	return func(networkParam *machinev1alpha1.NetworkParam) {
 		networkParam.Subnets = append(networkParam.Subnets, subnetParam)
+	}
+}
+
+func TestPortProfileToCapov1BindingProfile(t *testing.T) {
+	type checkFunc func(*testing.T, capov1.BindingProfile)
+
+	that := func(fns ...checkFunc) []checkFunc { return fns }
+	hasOVSHWOffloadEnabled := func(want bool) checkFunc {
+		return func(t *testing.T, bindingProfile capov1.BindingProfile) {
+			if have := bindingProfile.OVSHWOffload; want != have {
+				t.Errorf("expected bindingProfile to have OVSHWOffload %t, found %t", want, have)
+			}
+		}
+	}
+	hasTrustedVFEnabled := func(want bool) checkFunc {
+		return func(t *testing.T, bindingProfile capov1.BindingProfile) {
+			if have := bindingProfile.TrustedVF; want != have {
+				t.Errorf("expected bindingProfile to have TrustedVF %t, found %t", want, have)
+			}
+		}
+	}
+
+	for _, tc := range [...]struct {
+		name        string
+		portProfile map[string]string
+		check       []checkFunc
+	}{
+		{
+			name: "portProfile with no options",
+			portProfile: map[string]string{
+				"foo": "bar",
+			},
+			check: that(
+				hasOVSHWOffloadEnabled(false),
+				hasTrustedVFEnabled(false),
+			),
+		},
+		{
+			name: "portProfile with OVSHWOffload enabled",
+			portProfile: map[string]string{
+				"capabilities": "switchdev",
+			},
+			check: that(
+				hasOVSHWOffloadEnabled(true),
+				hasTrustedVFEnabled(false),
+			),
+		},
+		{
+			name: "portProfile with TrustedVF enabled",
+			portProfile: map[string]string{
+				"trusted": "true",
+			},
+			check: that(
+				hasOVSHWOffloadEnabled(false),
+				hasTrustedVFEnabled(true),
+			),
+		},
+		{
+			name: "portProfile with both options enabled",
+			portProfile: map[string]string{
+				"capabilities": "switchdev",
+				"trusted":      "true",
+			},
+			check: that(
+				hasOVSHWOffloadEnabled(true),
+				hasTrustedVFEnabled(true),
+			),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bindingProfile := portProfileToCapov1BindingProfile(tc.portProfile)
+			for _, check := range tc.check {
+				check(t, bindingProfile)
+			}
+		})
+	}
+}
+
+func TestSecurityGroupParamToCapov1SecurityGroupFilter(t *testing.T) {
+	type checkFunc func(*testing.T, []capov1.SecurityGroupFilter)
+	type securityGroupFilterCheckFunc func(*testing.T, capov1.SecurityGroupFilter)
+
+	that := func(fns ...checkFunc) []checkFunc { return fns }
+	hasSecurityGroupFilters := func(want int) checkFunc {
+		return func(t *testing.T, securityGroupFilters []capov1.SecurityGroupFilter) {
+			if have := len(securityGroupFilters); want != have {
+				t.Errorf("expected %d securityGroupFilters, found %d", want, have)
+			}
+		}
+	}
+
+	securityGroupFilter := func(i int, fns ...securityGroupFilterCheckFunc) checkFunc {
+		return func(t *testing.T, securityGroupFilters []capov1.SecurityGroupFilter) {
+			if len(securityGroupFilters) <= i {
+				t.Errorf("error checking securityGroupFilter %d: no such securityGroupFilter", i)
+				return
+			}
+			for _, check := range fns {
+				check(t, securityGroupFilters[i])
+			}
+		}
+	}
+
+	hasSecurityGroupUUID := func(want string) securityGroupFilterCheckFunc {
+		return func(t *testing.T, securityGroupFilter capov1.SecurityGroupFilter) {
+			if have := securityGroupFilter.ID; want != have {
+				t.Errorf("expected securityGroupFilter to have UUID %q, found %q", want, have)
+			}
+		}
+	}
+
+	for _, tc := range [...]struct {
+		name                string
+		securityGroupParams []machinev1alpha1.SecurityGroupParam
+		check               []checkFunc
+	}{
+		{
+			name: "securityGroupParam with one securityGroup ID",
+			securityGroupParams: []machinev1alpha1.SecurityGroupParam{
+				{
+					UUID: "c0f694ff-aabf-479f-8fa2-589696c03715",
+				},
+			},
+			check: that(
+				hasSecurityGroupFilters(1),
+				securityGroupFilter(0, hasSecurityGroupUUID("c0f694ff-aabf-479f-8fa2-589696c03715")),
+			),
+		},
+		{
+			name: "securityGroupParam with multiple securityGroup IDs",
+			securityGroupParams: []machinev1alpha1.SecurityGroupParam{
+				{
+					UUID: "c0f694ff-aabf-479f-8fa2-589696c03715",
+				},
+				{
+					UUID: "c0f694ff-aabf-479f-8fa2-589696c03716",
+				},
+				{
+					UUID: "c0f694ff-aabf-479f-8fa2-589696c03717",
+				},
+			},
+			check: that(
+				hasSecurityGroupFilters(3),
+				securityGroupFilter(0, hasSecurityGroupUUID("c0f694ff-aabf-479f-8fa2-589696c03715")),
+				securityGroupFilter(1, hasSecurityGroupUUID("c0f694ff-aabf-479f-8fa2-589696c03716")),
+				securityGroupFilter(2, hasSecurityGroupUUID("c0f694ff-aabf-479f-8fa2-589696c03717")),
+			),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			securityGroupFilters := securityGroupParamToCapov1SecurityGroupFilter(tc.securityGroupParams)
+			for _, check := range tc.check {
+				check(t, securityGroupFilters)
+			}
+		})
 	}
 }
 
@@ -221,6 +377,54 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 			)
 			for _, check := range tc.check {
 				check(t, portOpts, err)
+			}
+		})
+	}
+}
+func TestSecurityGroupsToSecurityGroupParams(t *testing.T) {
+	tests := []struct {
+		name           string
+		securityGroups []string
+		want           []machinev1alpha1.SecurityGroupParam
+	}{
+		{
+			name:           "empty security groups",
+			securityGroups: []string{},
+			want:           []machinev1alpha1.SecurityGroupParam{},
+		},
+		{
+			name:           "one security group",
+			securityGroups: []string{"sg-1234567890"},
+			want: []machinev1alpha1.SecurityGroupParam{
+				{
+					Filter: machinev1alpha1.SecurityGroupFilter{
+						ID: "sg-1234567890",
+					},
+				},
+			},
+		},
+		{
+			name:           "multiple security groups",
+			securityGroups: []string{"sg-1234567890", "sg-0987654321"},
+			want: []machinev1alpha1.SecurityGroupParam{
+				{
+					Filter: machinev1alpha1.SecurityGroupFilter{
+						ID: "sg-1234567890",
+					},
+				},
+				{
+					Filter: machinev1alpha1.SecurityGroupFilter{
+						ID: "sg-0987654321",
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := securityGroupsToSecurityGroupParams(tt.securityGroups); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("securityGroupsToSecurityGroupParams() = %v, want %v", got, tt.want)
 			}
 		})
 	}
