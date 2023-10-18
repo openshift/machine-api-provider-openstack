@@ -23,23 +23,25 @@ import (
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/attachinterfaces"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/availabilityzones"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
-	"github.com/gophercloud/utils/openstack/compute/v2/flavors"
+	"github.com/gophercloud/utils/openstack/clientconfig"
+	uflavors "github.com/gophercloud/utils/openstack/compute/v2/flavors"
 
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/metrics"
-	"sigs.k8s.io/cluster-api-provider-openstack/pkg/scope"
 )
 
 /*
 NovaMinimumMicroversion is the minimum Nova microversion supported by CAPO
-2.53 corresponds to OpenStack Pike
+2.60 corresponds to OpenStack Queens
 
 For the canonical description of Nova microversions, see
 https://docs.openstack.org/nova/latest/reference/api-microversion-history.html
 
 CAPO uses server tags, which were added in microversion 2.52.
+CAPO supports multiattach volume types, which were added in microversion 2.60.
 */
-const NovaMinimumMicroversion = "2.53"
+const NovaMinimumMicroversion = "2.60"
 
 // ServerExt is the base gophercloud Server with extensions used by InstanceStatus.
 type ServerExt struct {
@@ -50,7 +52,7 @@ type ServerExt struct {
 type ComputeClient interface {
 	ListAvailabilityZones() ([]availabilityzones.AvailabilityZone, error)
 
-	GetFlavorIDFromName(flavor string) (string, error)
+	GetFlavorFromName(flavor string) (*flavors.Flavor, error)
 	CreateServer(createOpts servers.CreateOptsBuilder) (*ServerExt, error)
 	DeleteServer(serverID string) error
 	GetServer(serverID string) (*ServerExt, error)
@@ -63,9 +65,9 @@ type ComputeClient interface {
 type computeClient struct{ client *gophercloud.ServiceClient }
 
 // NewComputeClient returns a new compute client.
-func NewComputeClient(scope *scope.Scope) (ComputeClient, error) {
-	compute, err := openstack.NewComputeV2(scope.ProviderClient, gophercloud.EndpointOpts{
-		Region: scope.ProviderClientOpts.RegionName,
+func NewComputeClient(providerClient *gophercloud.ProviderClient, providerClientOpts *clientconfig.ClientOpts) (ComputeClient, error) {
+	compute, err := openstack.NewComputeV2(providerClient, gophercloud.EndpointOpts{
+		Region: providerClientOpts.RegionName,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create compute service client: %v", err)
@@ -84,10 +86,14 @@ func (c computeClient) ListAvailabilityZones() ([]availabilityzones.Availability
 	return availabilityzones.ExtractAvailabilityZones(allPages)
 }
 
-func (c computeClient) GetFlavorIDFromName(flavor string) (string, error) {
+func (c computeClient) GetFlavorFromName(flavor string) (*flavors.Flavor, error) {
 	mc := metrics.NewMetricPrometheusContext("flavor", "get")
-	flavorID, err := flavors.IDFromName(c.client, flavor)
-	return flavorID, mc.ObserveRequest(err)
+	flavorID, err := uflavors.IDFromName(c.client, flavor)
+	if mc.ObserveRequest(err) != nil {
+		return nil, err
+	}
+	f, err := flavors.Get(c.client, flavorID).Extract()
+	return f, mc.ObserveRequest(err)
 }
 
 func (c computeClient) CreateServer(createOpts servers.CreateOptsBuilder) (*ServerExt, error) {
@@ -153,30 +159,30 @@ func (e computeErrorClient) ListAvailabilityZones() ([]availabilityzones.Availab
 	return nil, e.error
 }
 
-func (e computeErrorClient) GetFlavorIDFromName(flavor string) (string, error) {
-	return "", e.error
-}
-
-func (e computeErrorClient) CreateServer(createOpts servers.CreateOptsBuilder) (*ServerExt, error) {
+func (e computeErrorClient) GetFlavorFromName(_ string) (*flavors.Flavor, error) {
 	return nil, e.error
 }
 
-func (e computeErrorClient) DeleteServer(serverID string) error {
+func (e computeErrorClient) CreateServer(_ servers.CreateOptsBuilder) (*ServerExt, error) {
+	return nil, e.error
+}
+
+func (e computeErrorClient) DeleteServer(_ string) error {
 	return e.error
 }
 
-func (e computeErrorClient) GetServer(serverID string) (*ServerExt, error) {
+func (e computeErrorClient) GetServer(_ string) (*ServerExt, error) {
 	return nil, e.error
 }
 
-func (e computeErrorClient) ListServers(listOpts servers.ListOptsBuilder) ([]ServerExt, error) {
+func (e computeErrorClient) ListServers(_ servers.ListOptsBuilder) ([]ServerExt, error) {
 	return nil, e.error
 }
 
-func (e computeErrorClient) ListAttachedInterfaces(serverID string) ([]attachinterfaces.Interface, error) {
+func (e computeErrorClient) ListAttachedInterfaces(_ string) ([]attachinterfaces.Interface, error) {
 	return nil, e.error
 }
 
-func (e computeErrorClient) DeleteAttachedInterface(serverID, portID string) error {
+func (e computeErrorClient) DeleteAttachedInterface(_, _ string) error {
 	return e.error
 }

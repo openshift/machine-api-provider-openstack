@@ -25,7 +25,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 
-	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha6"
+	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/metrics"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
 	capoerrors "sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/errors"
@@ -76,7 +76,7 @@ func (s *Service) ReconcileExternalNetwork(openStackCluster *infrav1.OpenStackCl
 			return err
 		}
 		if externalNetwork.ID != "" {
-			openStackCluster.Status.ExternalNetwork = &infrav1.Network{
+			openStackCluster.Status.ExternalNetwork = &infrav1.NetworkStatus{
 				ID:   externalNetwork.ID,
 				Name: externalNetwork.Name,
 				Tags: externalNetwork.Tags,
@@ -101,16 +101,16 @@ func (s *Service) ReconcileExternalNetwork(openStackCluster *infrav1.OpenStackCl
 	switch len(networkList) {
 	case 0:
 		// Not finding an external network is fine
-		openStackCluster.Status.ExternalNetwork = &infrav1.Network{}
-		s.scope.Logger.Info("No external network found - proceeding with internal network only")
+		openStackCluster.Status.ExternalNetwork = &infrav1.NetworkStatus{}
+		s.scope.Logger().Info("No external network found - proceeding with internal network only")
 		return nil
 	case 1:
-		openStackCluster.Status.ExternalNetwork = &infrav1.Network{
+		openStackCluster.Status.ExternalNetwork = &infrav1.NetworkStatus{
 			ID:   networkList[0].ID,
 			Name: networkList[0].Name,
 			Tags: networkList[0].Tags,
 		}
-		s.scope.Logger.Info("External network found", "network id", networkList[0].ID)
+		s.scope.Logger().Info("External network found", "id", networkList[0].ID)
 		return nil
 	}
 	return fmt.Errorf("found %d external networks, which should not happen", len(networkList))
@@ -118,7 +118,7 @@ func (s *Service) ReconcileExternalNetwork(openStackCluster *infrav1.OpenStackCl
 
 func (s *Service) ReconcileNetwork(openStackCluster *infrav1.OpenStackCluster, clusterName string) error {
 	networkName := getNetworkName(clusterName)
-	s.scope.Logger.Info("Reconciling network", "name", networkName)
+	s.scope.Logger().Info("Reconciling network", "name", networkName)
 
 	res, err := s.getNetworkByName(networkName)
 	if err != nil {
@@ -127,13 +127,11 @@ func (s *Service) ReconcileNetwork(openStackCluster *infrav1.OpenStackCluster, c
 
 	if res.ID != "" {
 		// Network exists
-		openStackCluster.Status.Network = &infrav1.Network{
-			ID:   res.ID,
-			Name: res.Name,
-			Tags: res.Tags,
-		}
-		sInfo := fmt.Sprintf("Reuse Existing Network %s with id %s", res.Name, res.ID)
-		s.scope.Logger.V(6).Info(sInfo)
+		openStackCluster.Status.Network = &infrav1.NetworkStatusWithSubnets{}
+		openStackCluster.Status.Network.ID = res.ID
+		openStackCluster.Status.Network.Name = res.Name
+		openStackCluster.Status.Network.Tags = res.Tags
+		s.scope.Logger().V(6).Info("Reusing existing network", "name", res.Name, "id", res.ID)
 		return nil
 	}
 
@@ -167,11 +165,10 @@ func (s *Service) ReconcileNetwork(openStackCluster *infrav1.OpenStackCluster, c
 		}
 	}
 
-	openStackCluster.Status.Network = &infrav1.Network{
-		ID:   network.ID,
-		Name: network.Name,
-		Tags: openStackCluster.Spec.Tags,
-	}
+	openStackCluster.Status.Network = &infrav1.NetworkStatusWithSubnets{}
+	openStackCluster.Status.Network.ID = network.ID
+	openStackCluster.Status.Network.Name = network.Name
+	openStackCluster.Status.Network.Tags = openStackCluster.Spec.Tags
 	return nil
 }
 
@@ -197,12 +194,12 @@ func (s *Service) DeleteNetwork(openStackCluster *infrav1.OpenStackCluster, clus
 
 func (s *Service) ReconcileSubnet(openStackCluster *infrav1.OpenStackCluster, clusterName string) error {
 	if openStackCluster.Status.Network == nil || openStackCluster.Status.Network.ID == "" {
-		s.scope.Logger.V(4).Info("No need to reconcile network components since no network exists.")
+		s.scope.Logger().V(4).Info("No need to reconcile network components since no network exists")
 		return nil
 	}
 
 	subnetName := getSubnetName(clusterName)
-	s.scope.Logger.Info("Reconciling subnet", "name", subnetName)
+	s.scope.Logger().Info("Reconciling subnet", "name", subnetName)
 
 	subnetList, err := s.client.ListSubnet(subnets.ListOpts{
 		NetworkID: openStackCluster.Status.Network.ID,
@@ -225,14 +222,16 @@ func (s *Service) ReconcileSubnet(openStackCluster *infrav1.OpenStackCluster, cl
 		}
 	} else if len(subnetList) == 1 {
 		subnet = &subnetList[0]
-		s.scope.Logger.V(6).Info(fmt.Sprintf("Reuse existing subnet %s with id %s", subnetName, subnet.ID))
+		s.scope.Logger().V(6).Info("Reusing existing subnet", "name", subnet.Name, "id", subnet.ID)
 	}
 
-	openStackCluster.Status.Network.Subnet = &infrav1.Subnet{
-		ID:   subnet.ID,
-		Name: subnet.Name,
-		CIDR: subnet.CIDR,
-		Tags: subnet.Tags,
+	openStackCluster.Status.Network.Subnets = []infrav1.Subnet{
+		{
+			ID:   subnet.ID,
+			Name: subnet.Name,
+			CIDR: subnet.CIDR,
+			Tags: subnet.Tags,
+		},
 	}
 	return nil
 }
@@ -351,16 +350,31 @@ func (s *Service) GetSubnetsByFilter(opts subnets.ListOptsBuilder) ([]subnets.Su
 // GetSubnetByFilter gets a single subnet specified by the given SubnetFilter.
 // It returns an ErrFilterMatch if no or multiple subnets are found.
 func (s *Service) GetSubnetByFilter(filter *infrav1.SubnetFilter) (*subnets.Subnet, error) {
+	return s.getSubnetByFilter(filter.ToListOpt())
+}
+
+// GetNetworkSubnetByFilter gets a single subnet of the given network, specified by the given SubnetFilter.
+// It returns an ErrFilterMatch if no or multiple subnets are found.
+func (s *Service) GetNetworkSubnetByFilter(networkID string, filter *infrav1.SubnetFilter) (*subnets.Subnet, error) {
+	listOpt := filter.ToListOpt()
+	listOpt.NetworkID = networkID
+
+	return s.getSubnetByFilter(listOpt)
+}
+
+// getSubnetByFilter gets a single subnet specified by the given gophercloud ListOpts.
+// It returns an ErrFilterMatch if no or multiple subnets are found.
+func (s *Service) getSubnetByFilter(listOpts subnets.ListOpts) (*subnets.Subnet, error) {
 	// If the ID is set, we can just get the subnet by ID.
-	if filter.ID != "" {
-		subnet, err := s.client.GetSubnet(filter.ID)
+	if listOpts.ID != "" {
+		subnet, err := s.client.GetSubnet(listOpts.ID)
 		if capoerrors.IsNotFound(err) {
 			return nil, ErrNoMatches
 		}
 		return subnet, err
 	}
 
-	subnets, err := s.GetSubnetsByFilter(filter.ToListOpt())
+	subnets, err := s.GetSubnetsByFilter(listOpts)
 	if err != nil {
 		return nil, err
 	}

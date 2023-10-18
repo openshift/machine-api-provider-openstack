@@ -17,7 +17,7 @@ limitations under the License.
 package networking
 
 import (
-	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha6"
+	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
 )
 
 var defaultRules = []infrav1.SecurityGroupRule{
@@ -289,6 +289,34 @@ func GetSGWorkerAllowAll(remoteGroupIDSelf, secControlPlaneGroupID string) []inf
 			RemoteGroupID: secControlPlaneGroupID,
 		},
 	}
+}
+
+// Permit ports that defined in openStackCluster.Spec.APIServerLoadBalancer.AdditionalPorts.
+func GetSGControlPlaneAdditionalPorts(ports []int) []infrav1.SecurityGroupRule {
+	controlPlaneRules := []infrav1.SecurityGroupRule{}
+
+	r := []infrav1.SecurityGroupRule{
+		{
+			Description: "Additional ports",
+			Direction:   "ingress",
+			EtherType:   "IPv4",
+			Protocol:    "tcp",
+		},
+		{
+			Description: "Additional ports",
+			Direction:   "ingress",
+			EtherType:   "IPv4",
+			Protocol:    "udp",
+		},
+	}
+	for _, p := range ports {
+		r[0].PortRangeMin = p
+		r[0].PortRangeMax = p
+		r[1].PortRangeMin = p
+		r[1].PortRangeMax = p
+		controlPlaneRules = append(controlPlaneRules, r...)
+	}
+	return controlPlaneRules
 }
 
 func GetSGControlPlaneGeneral(remoteGroupIDSelf, secWorkerGroupID string) []infrav1.SecurityGroupRule {

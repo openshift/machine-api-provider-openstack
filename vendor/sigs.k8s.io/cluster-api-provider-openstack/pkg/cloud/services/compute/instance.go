@@ -17,6 +17,7 @@ limitations under the License.
 package compute
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -27,13 +28,14 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/bootfromvolume"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/schedulerhints"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 	"github.com/gophercloud/gophercloud/openstack/imageservice/v2/images"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/cluster-api/util"
+	"k8s.io/apimachinery/pkg/util/wait"
 
-	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha6"
+	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/clients"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
@@ -57,12 +59,12 @@ func (s *Service) normalizePortTarget(port *infrav1.PortOpts, openStackCluster *
 		port.Network = &infrav1.NetworkFilter{
 			ID: openStackCluster.Status.Network.ID,
 		}
-		port.FixedIPs = []infrav1.FixedIP{
-			{
+		for _, subnet := range openStackCluster.Status.Network.Subnets {
+			port.FixedIPs = append(port.FixedIPs, infrav1.FixedIP{
 				Subnet: &infrav1.SubnetFilter{
-					ID: openStackCluster.Status.Network.Subnet.ID,
+					ID: subnet.ID,
 				},
-			},
+			})
 		}
 
 		return nil
@@ -71,7 +73,7 @@ func (s *Service) normalizePortTarget(port *infrav1.PortOpts, openStackCluster *
 	// No network, but fixed IPs are defined(we handled the no fixed
 	// IPs case above): try to infer network from a subnet
 	if noNetwork {
-		s.scope.Logger.V(4).Info("No network defined for port %d, attempting to infer from subnet", portIdx)
+		s.scope.Logger().V(4).Info("No network defined for port, attempting to infer from subnet", "port", portIdx)
 
 		// Look for a unique subnet defined in FixedIPs.  If we find one
 		// we can use it to infer the network ID. We don't need to worry
@@ -93,7 +95,7 @@ func (s *Service) normalizePortTarget(port *infrav1.PortOpts, openStackCluster *
 				if err != nil {
 					// Multiple matches might be ok later when we restrict matches to a single network
 					if errors.Is(err, networking.ErrMultipleMatches) {
-						s.scope.Logger.V(4).Info("Can't infer network from subnet %d: %s", i, err)
+						s.scope.Logger().V(4).Info("Couldn't infer network from subnet", "subnetIndex", i, "err", err)
 						continue
 					}
 
@@ -170,46 +172,37 @@ func (s *Service) normalizePorts(ports []infrav1.PortOpts, openStackCluster *inf
 	return normalizedPorts, nil
 }
 
-// constructNetworks builds an array of networks from the network, subnet and ports items in the instance spec.
-// If no networks or ports are in the spec, returns a single network item for a network connection to the default cluster network.
-func (s *Service) constructNetworks(openStackCluster *infrav1.OpenStackCluster, instanceSpec *InstanceSpec) ([]infrav1.Network, error) {
-	nets, err := s.getServerNetworks(instanceSpec.Networks)
-	if err != nil {
-		return nil, err
-	}
-
+// constructPorts builds an array of ports from the instance spec.
+// If no ports are in the spec, returns a single port for a network connection to the default cluster network.
+func (s *Service) constructPorts(openStackCluster *infrav1.OpenStackCluster, instanceSpec *InstanceSpec) ([]infrav1.PortOpts, error) {
 	// Ensure user-specified ports have all required fields
 	ports, err := s.normalizePorts(instanceSpec.Ports, openStackCluster, instanceSpec)
 	if err != nil {
 		return nil, err
 	}
-	for i := range ports {
-		port := &ports[i]
-		nets = append(nets, infrav1.Network{
-			ID:       port.Network.ID,
-			Subnet:   &infrav1.Subnet{},
-			PortOpts: port,
-		})
-	}
 
 	// no networks or ports found in the spec, so create a port on the cluster network
-	if len(nets) == 0 {
-		nets = []infrav1.Network{{
-			ID: openStackCluster.Status.Network.ID,
-			Subnet: &infrav1.Subnet{
-				ID: openStackCluster.Status.Network.Subnet.ID,
+	if len(ports) == 0 {
+		port := infrav1.PortOpts{
+			Network: &infrav1.NetworkFilter{
+				ID: openStackCluster.Status.Network.ID,
 			},
-			PortOpts: &infrav1.PortOpts{
-				Trunk: &instanceSpec.Trunk,
-			},
-		}}
+			Trunk: &instanceSpec.Trunk,
+		}
+		for _, subnet := range openStackCluster.Status.Network.Subnets {
+			port.FixedIPs = append(port.FixedIPs, infrav1.FixedIP{
+				Subnet: &infrav1.SubnetFilter{
+					ID: subnet.ID,
+				},
+			})
+		}
+		ports = []infrav1.PortOpts{port}
 	}
 
 	// trunk support is required if any port has trunk enabled
 	portUsesTrunk := func() bool {
-		for _, net := range nets {
-			port := net.PortOpts
-			if port != nil && port.Trunk != nil && *port.Trunk {
+		for _, port := range ports {
+			if port.Trunk != nil && *port.Trunk {
 				return true
 			}
 		}
@@ -225,14 +218,26 @@ func (s *Service) constructNetworks(openStackCluster *infrav1.OpenStackCluster, 
 		}
 	}
 
-	return nets, nil
+	return ports, nil
 }
 
-func (s *Service) CreateInstance(eventObject runtime.Object, openStackCluster *infrav1.OpenStackCluster, instanceSpec *InstanceSpec, clusterName string) (*InstanceStatus, error) {
-	return s.createInstanceImpl(eventObject, openStackCluster, instanceSpec, clusterName, retryIntervalInstanceStatus)
+func (s *Service) CreateInstance(eventObject runtime.Object, openStackCluster *infrav1.OpenStackCluster, instanceSpec *InstanceSpec, clusterName string, isBastion bool) (*InstanceStatus, error) {
+	return s.createInstanceImpl(eventObject, openStackCluster, instanceSpec, clusterName, isBastion, retryIntervalInstanceStatus)
 }
 
-func (s *Service) createInstanceImpl(eventObject runtime.Object, openStackCluster *infrav1.OpenStackCluster, instanceSpec *InstanceSpec, clusterName string, retryInterval time.Duration) (*InstanceStatus, error) {
+func (s *Service) getAndValidateFlavor(flavorName string, isBastion bool) (*flavors.Flavor, error) {
+	f, err := s.getComputeClient().GetFlavorFromName(flavorName)
+	if err != nil {
+		return nil, fmt.Errorf("error getting flavor from flavor name %s: %v", flavorName, err)
+	}
+	if !isBastion && f.VCPUs <= 1 {
+		return nil, fmt.Errorf("kubeadm requires a minimum of 2 vCPUs, pick a flavor with at least 2 vCPUs")
+	}
+
+	return f, nil
+}
+
+func (s *Service) createInstanceImpl(eventObject runtime.Object, openStackCluster *infrav1.OpenStackCluster, instanceSpec *InstanceSpec, clusterName string, isBastion bool, retryInterval time.Duration) (*InstanceStatus, error) {
 	var server *clients.ServerExt
 	portList := []servers.Network{}
 
@@ -241,9 +246,9 @@ func (s *Service) createInstanceImpl(eventObject runtime.Object, openStackCluste
 		return nil, fmt.Errorf("error getting image ID: %v", err)
 	}
 
-	flavorID, err := s.getComputeClient().GetFlavorIDFromName(instanceSpec.Flavor)
+	flavor, err := s.getAndValidateFlavor(instanceSpec.Flavor, isBastion)
 	if err != nil {
-		return nil, fmt.Errorf("error getting flavor id from flavor name %s: %v", instanceSpec.Flavor, err)
+		return nil, err
 	}
 
 	// Ensure we delete the ports we created if we haven't created the server.
@@ -253,11 +258,11 @@ func (s *Service) createInstanceImpl(eventObject runtime.Object, openStackCluste
 		}
 
 		if err := s.deletePorts(eventObject, portList); err != nil {
-			s.scope.Logger.V(4).Error(err, "Failed to clean up ports after failure")
+			s.scope.Logger().V(4).Error(err, "Failed to clean up ports after failure")
 		}
 	}()
 
-	nets, err := s.constructNetworks(openStackCluster, instanceSpec)
+	ports, err := s.constructPorts(openStackCluster, instanceSpec)
 	if err != nil {
 		return nil, err
 	}
@@ -272,34 +277,21 @@ func (s *Service) createInstanceImpl(eventObject runtime.Object, openStackCluste
 		return nil, fmt.Errorf("error getting security groups: %v", err)
 	}
 
-	accessIPv4 := ""
-	for i, network := range nets {
-		if network.ID == "" {
-			return nil, fmt.Errorf("no network was found or provided. Please check your machine configuration and try again")
-		}
+	for i := range ports {
+		portOpts := &ports[i]
 		iTags := []string{}
 		if len(instanceSpec.Tags) > 0 {
 			iTags = instanceSpec.Tags
 		}
-		portName := getPortName(instanceSpec.Name, network.PortOpts, i)
-		port, err := networkingService.GetOrCreatePort(eventObject, clusterName, portName, network, &securityGroups, iTags)
+		portName := networking.GetPortName(instanceSpec.Name, portOpts, i)
+		port, err := networkingService.GetOrCreatePort(eventObject, clusterName, portName, portOpts, securityGroups, iTags)
 		if err != nil {
 			return nil, err
-		}
-
-		for _, fip := range port.FixedIPs {
-			if fip.SubnetID == instanceSpec.Subnet {
-				accessIPv4 = fip.IPAddress
-			}
 		}
 
 		portList = append(portList, servers.Network{
 			Port: port.ID,
 		})
-	}
-
-	if instanceSpec.Subnet != "" && accessIPv4 == "" {
-		return nil, fmt.Errorf("no ports with fixed IPs found on Subnet %q", instanceSpec.Subnet)
 	}
 
 	volume, err := s.getOrCreateRootVolume(eventObject, instanceSpec, imageID)
@@ -312,7 +304,7 @@ func (s *Service) createInstanceImpl(eventObject runtime.Object, openStackCluste
 
 	// Wait for volume to become available
 	if volume != nil {
-		err = util.PollImmediate(retryIntervalInstanceStatus, instanceCreateTimeout, func() (bool, error) {
+		err = wait.PollUntilContextTimeout(context.TODO(), retryIntervalInstanceStatus, instanceCreateTimeout, true, func(_ context.Context) (bool, error) {
 			createdVolume, err := s.getVolumeClient().GetVolume(volume.ID)
 			if err != nil {
 				if capoerrors.IsRetryable(err) {
@@ -344,14 +336,13 @@ func (s *Service) createInstanceImpl(eventObject runtime.Object, openStackCluste
 	var serverCreateOpts servers.CreateOptsBuilder = servers.CreateOpts{
 		Name:             instanceSpec.Name,
 		ImageRef:         serverImageRef,
-		FlavorRef:        flavorID,
+		FlavorRef:        flavor.ID,
 		AvailabilityZone: instanceSpec.FailureDomain,
 		Networks:         portList,
 		UserData:         []byte(instanceSpec.UserData),
 		Tags:             instanceSpec.Tags,
 		Metadata:         instanceSpec.Metadata,
 		ConfigDrive:      &instanceSpec.ConfigDrive,
-		AccessIPv4:       accessIPv4,
 	}
 
 	serverCreateOpts = applyRootVolume(serverCreateOpts, volume)
@@ -367,7 +358,7 @@ func (s *Service) createInstanceImpl(eventObject runtime.Object, openStackCluste
 	}
 
 	var createdInstance *InstanceStatus
-	err = util.PollImmediate(retryInterval, instanceCreateTimeout, func() (bool, error) {
+	err = wait.PollUntilContextTimeout(context.TODO(), retryInterval, instanceCreateTimeout, true, func(_ context.Context) (bool, error) {
 		createdInstance, err = s.GetInstanceStatus(server.ID)
 		if err != nil {
 			if capoerrors.IsRetryable(err) {
@@ -389,14 +380,6 @@ func (s *Service) createInstanceImpl(eventObject runtime.Object, openStackCluste
 	return createdInstance, nil
 }
 
-// getPortName appends a suffix to an instance name in order to try and get a unique name per port.
-func getPortName(instanceName string, opts *infrav1.PortOpts, netIndex int) string {
-	if opts != nil && opts.NameSuffix != "" {
-		return fmt.Sprintf("%s-%s", instanceName, opts.NameSuffix)
-	}
-	return fmt.Sprintf("%s-%d", instanceName, netIndex)
-}
-
 func rootVolumeName(instanceName string) string {
 	return fmt.Sprintf("%s-root", instanceName)
 }
@@ -409,7 +392,7 @@ func (s *Service) getVolumeByName(name string) (*volumes.Volume, error) {
 	listOpts := volumes.ListOpts{
 		AllTenants: false,
 		Name:       name,
-		TenantID:   s.scope.ProjectID,
+		TenantID:   s.scope.ProjectID(),
 	}
 	volumeList, err := s.getVolumeClient().ListVolumes(listOpts)
 	if err != nil {
@@ -442,7 +425,7 @@ func (s *Service) getOrCreateRootVolume(eventObject runtime.Object, instanceSpec
 			return nil, fmt.Errorf("exected to find volume %s with size %d; found size %d", name, size, volume.Size)
 		}
 
-		s.scope.Logger.Info("using existing root volume %s", name)
+		s.scope.Logger().V(3).Info("Using existing root volume", "name", name)
 		return volume, nil
 	}
 
@@ -502,91 +485,6 @@ func applyServerGroupID(opts servers.CreateOptsBuilder, serverGroupID string) se
 	return opts
 }
 
-func (s *Service) getServerNetworks(networkParams []infrav1.NetworkParam) ([]infrav1.Network, error) {
-	var nets []infrav1.Network
-
-	addSubnet := func(netID, subnetID string) {
-		nets = append(nets, infrav1.Network{
-			ID: netID,
-			Subnet: &infrav1.Subnet{
-				ID: subnetID,
-			},
-		})
-	}
-
-	addSubnets := func(networkParam infrav1.NetworkParam, netID string) error {
-		if len(networkParam.Subnets) == 0 && netID != "" {
-			addSubnet(netID, "")
-			return nil
-		}
-
-		for _, subnet := range networkParam.Subnets {
-			// Don't lookup subnet if it was specified explicitly by UUID
-			if subnet.UUID != "" {
-				// If subnet was supplied by UUID then network
-				// must also have been supplied by UUID.
-				if netID == "" {
-					return fmt.Errorf("validation error adding network for subnet %s: "+
-						"network uuid must be specified when subnet uuid is specified", subnet.UUID)
-				}
-
-				addSubnet(netID, subnet.UUID)
-			} else {
-				subnetOpts := subnet.Filter.ToListOpt()
-				if netID != "" {
-					subnetOpts.NetworkID = netID
-				}
-
-				networkingService, err := s.getNetworkingService()
-				if err != nil {
-					return err
-				}
-
-				subnetsByFilter, err := networkingService.GetSubnetsByFilter(&subnetOpts)
-				if err != nil {
-					return err
-				}
-				for _, subnetByFilter := range subnetsByFilter {
-					addSubnet(subnetByFilter.NetworkID, subnetByFilter.ID)
-				}
-			}
-		}
-
-		return nil
-	}
-
-	for _, networkParam := range networkParams {
-		// Don't lookup network if we specified one explicitly by UUID
-		// Don't lookup network if we didn't specify a network filter
-		// If there is no explicit network UUID and no network filter,
-		// we will look for subnets matching any given subnet filters in
-		// all networks.
-		if networkParam.UUID != "" || networkParam.Filter == (infrav1.NetworkFilter{}) {
-			if err := addSubnets(networkParam, networkParam.UUID); err != nil {
-				return nil, err
-			}
-			continue
-		}
-
-		networkingService, err := s.getNetworkingService()
-		if err != nil {
-			return nil, err
-		}
-
-		opts := networkParam.Filter.ToListOpt()
-		ids, err := networkingService.GetNetworkIDsByFilter(&opts)
-		if err != nil {
-			return nil, err
-		}
-		for _, netID := range ids {
-			if err := addSubnets(networkParam, netID); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return nets, nil
-}
-
 // Helper function for getting image id from name.
 func (s *Service) getImageIDFromName(imageName string) (string, error) {
 	var opts images.ListOpts
@@ -644,7 +542,7 @@ func (s *Service) GetManagementPort(openStackCluster *infrav1.OpenStackCluster, 
 	return &allPorts[0], nil
 }
 
-func (s *Service) DeleteInstance(eventObject runtime.Object, instanceStatus *InstanceStatus, instanceName string, rootVolume *infrav1.RootVolume) error {
+func (s *Service) DeleteInstance(openStackCluster *infrav1.OpenStackCluster, eventObject runtime.Object, instanceStatus *InstanceStatus, instanceSpec *InstanceSpec) error {
 	if instanceStatus == nil {
 		/*
 			We create a boot-from-volume instance in 2 steps:
@@ -664,8 +562,8 @@ func (s *Service) DeleteInstance(eventObject runtime.Object, instanceStatus *Ins
 			Note that we don't need to separately delete the root volume when deleting the instance because
 			DeleteOnTermination will ensure it is deleted in that case.
 		*/
-		if hasRootVolume(rootVolume) {
-			name := rootVolumeName(instanceName)
+		if hasRootVolume(instanceSpec.RootVolume) {
+			name := rootVolumeName(instanceSpec.Name)
 			volume, err := s.getVolumeByName(name)
 			if err != nil {
 				return err
@@ -674,7 +572,7 @@ func (s *Service) DeleteInstance(eventObject runtime.Object, instanceStatus *Ins
 				return nil
 			}
 
-			s.scope.Logger.Info("deleting dangling root volume %s(%s)", volume.Name, volume.ID)
+			s.scope.Logger().V(2).Info("Deleting dangling root volume", "name", volume.Name, "ID", volume.ID)
 			return s.getVolumeClient().DeleteVolume(volume.ID, volumes.DeleteOpts{})
 		}
 
@@ -714,7 +612,12 @@ func (s *Service) DeleteInstance(eventObject runtime.Object, instanceStatus *Ins
 
 	// delete port of error instance
 	if instanceStatus.State() == infrav1.InstanceStateError {
-		if err := networkingService.GarbageCollectErrorInstancesPort(eventObject, instanceStatus.Name()); err != nil {
+		portOpts, err := s.constructPorts(openStackCluster, instanceSpec)
+		if err != nil {
+			return err
+		}
+
+		if err := networkingService.GarbageCollectErrorInstancesPort(eventObject, instanceSpec.Name, portOpts); err != nil {
 			return err
 		}
 	}
@@ -777,7 +680,7 @@ func (s *Service) deleteInstance(eventObject runtime.Object, instance *InstanceI
 		return err
 	}
 
-	err = util.PollImmediate(retryIntervalInstanceStatus, timeoutInstanceDelete, func() (bool, error) {
+	err = wait.PollUntilContextTimeout(context.TODO(), retryIntervalInstanceStatus, timeoutInstanceDelete, true, func(_ context.Context) (bool, error) {
 		i, err := s.GetInstanceStatus(instance.ID)
 		if err != nil {
 			return false, err
@@ -809,7 +712,7 @@ func (s *Service) GetInstanceStatus(resourceID string) (instance *InstanceStatus
 		return nil, fmt.Errorf("get server %q detail failed: %v", resourceID, err)
 	}
 
-	return &InstanceStatus{server, s.scope.Logger}, nil
+	return &InstanceStatus{server, s.scope.Logger()}, nil
 }
 
 func (s *Service) GetInstanceStatusByName(eventObject runtime.Object, name string) (instance *InstanceStatus, err error) {
@@ -836,7 +739,7 @@ func (s *Service) GetInstanceStatusByName(eventObject runtime.Object, name strin
 
 	// Return the first returned server, if any
 	for i := range serverList {
-		return &InstanceStatus{&serverList[i], s.scope.Logger}, nil
+		return &InstanceStatus{&serverList[i], s.scope.Logger()}, nil
 	}
 	return nil, nil
 }

@@ -119,7 +119,7 @@ type PortOpts struct {
 	ProjectID string    `json:"projectId,omitempty"`
 	// The uuids of the security groups to assign to the instance
 	// +listType=set
-	SecurityGroups *[]string `json:"securityGroups,omitempty"`
+	SecurityGroups []string `json:"securityGroups,omitempty"`
 	// The names, uuids, filters or any combination these of the security groups to assign to the instance
 	SecurityGroupFilters []SecurityGroupParam `json:"securityGroupFilters,omitempty"`
 	AllowedAddressPairs  []AddressPair        `json:"allowedAddressPairs,omitempty"`
@@ -145,6 +145,14 @@ type PortOpts struct {
 	// These tags are applied in addition to the instance's tags, which will also be applied to the port.
 	// +listType=set
 	Tags []string `json:"tags,omitempty"`
+
+	// Value specs are extra parameters to include in the API request with OpenStack.
+	// This is an extension point for the API, so what they do and if they are supported,
+	// depends on the specific OpenStack implementation.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	ValueSpecs []ValueSpec `json:"valueSpecs,omitempty"`
 }
 
 type FixedIP struct {
@@ -164,8 +172,8 @@ type Instance struct {
 	Name           string            `json:"name,omitempty"`
 	Trunk          bool              `json:"trunk,omitempty"`
 	FailureDomain  string            `json:"failureDomain,omitempty"`
-	SecurityGroups *[]string         `json:"securigyGroups,omitempty"`
-	Networks       *[]Network        `json:"networks,omitempty"`
+	SecurityGroups []string          `json:"securigyGroups,omitempty"`
+	Networks       []Network         `json:"networks,omitempty"`
 	Subnet         string            `json:"subnet,omitempty"`
 	Tags           []string          `json:"tags,omitempty"`
 	Image          string            `json:"image,omitempty"`
@@ -234,6 +242,8 @@ type LoadBalancer struct {
 	InternalIP string `json:"internalIP"`
 	//+optional
 	AllowedCIDRs []string `json:"allowedCIDRs,omitempty"`
+	//+optional
+	Tags []string `json:"tags,omitempty"`
 }
 
 // SecurityGroup represents the basic information of the associated
@@ -315,4 +325,18 @@ type APIServerLoadBalancer struct {
 	AllowedCIDRs []string `json:"allowedCidrs,omitempty"`
 	// Octavia Provider Used to create load balancer
 	Provider string `json:"provider,omitempty"`
+}
+
+// ValueSpec represents a single value_spec key-value pair.
+type ValueSpec struct {
+	// Name is the name of the key-value pair.
+	// This is just for identifying the pair and will not be sent to the OpenStack API.
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+	// Key is the key in the key-value pair.
+	// +kubebuilder:validation:Required
+	Key string `json:"key"`
+	// Value is the value in the key-value pair.
+	// +kubebuilder:validation:Required
+	Value string `json:"value"`
 }

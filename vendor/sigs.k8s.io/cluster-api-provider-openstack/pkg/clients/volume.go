@@ -22,9 +22,9 @@ import (
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/volumes"
+	"github.com/gophercloud/utils/openstack/clientconfig"
 
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/metrics"
-	"sigs.k8s.io/cluster-api-provider-openstack/pkg/scope"
 )
 
 type VolumeClient interface {
@@ -37,9 +37,9 @@ type VolumeClient interface {
 type volumeClient struct{ client *gophercloud.ServiceClient }
 
 // NewVolumeClient returns a new cinder client.
-func NewVolumeClient(scope *scope.Scope) (VolumeClient, error) {
-	volume, err := openstack.NewBlockStorageV3(scope.ProviderClient, gophercloud.EndpointOpts{
-		Region: scope.ProviderClientOpts.RegionName,
+func NewVolumeClient(providerClient *gophercloud.ProviderClient, providerClientOpts *clientconfig.ClientOpts) (VolumeClient, error) {
+	volume, err := openstack.NewBlockStorageV3(providerClient, gophercloud.EndpointOpts{
+		Region: providerClientOpts.RegionName,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create volume service client: %v", err)
@@ -82,18 +82,18 @@ func NewVolumeErrorClient(e error) VolumeClient {
 	return volumeErrorClient{e}
 }
 
-func (e volumeErrorClient) ListVolumes(opts volumes.ListOptsBuilder) ([]volumes.Volume, error) {
+func (e volumeErrorClient) ListVolumes(_ volumes.ListOptsBuilder) ([]volumes.Volume, error) {
 	return nil, e.error
 }
 
-func (e volumeErrorClient) CreateVolume(opts volumes.CreateOptsBuilder) (*volumes.Volume, error) {
+func (e volumeErrorClient) CreateVolume(_ volumes.CreateOptsBuilder) (*volumes.Volume, error) {
 	return nil, e.error
 }
 
-func (e volumeErrorClient) DeleteVolume(volumeID string, opts volumes.DeleteOptsBuilder) error {
+func (e volumeErrorClient) DeleteVolume(_ string, _ volumes.DeleteOptsBuilder) error {
 	return e.error
 }
 
-func (e volumeErrorClient) GetVolume(volumeID string) (*volumes.Volume, error) {
+func (e volumeErrorClient) GetVolume(_ string) (*volumes.Volume, error) {
 	return nil, e.error
 }

@@ -34,6 +34,9 @@ const (
 	// ClusterFinalizer is the finalizer used by the cluster controller to
 	// cleanup the cluster resources when a Cluster is being deleted.
 	ClusterFinalizer = "cluster.cluster.x-k8s.io"
+
+	// ClusterKind represents the Kind of Cluster.
+	ClusterKind = "Cluster"
 )
 
 // ANCHOR: ClusterSpec
@@ -80,6 +83,9 @@ type Topology struct {
 
 	// RolloutAfter performs a rollout of the entire cluster one component at a time,
 	// control plane first and then machine deployments.
+	//
+	// Deprecated: This field has no function and is going to be removed in the next apiVersion.
+	//
 	// +optional
 	RolloutAfter *metav1.Time `json:"rolloutAfter,omitempty"`
 
@@ -234,12 +240,18 @@ type MachineHealthCheckTopology struct {
 	MachineHealthCheckClass `json:",inline"`
 }
 
-// ClusterVariable can be used to customize the Cluster through
-// patches. It must comply to the corresponding
-// ClusterClassVariable defined in the ClusterClass.
+// ClusterVariable can be used to customize the Cluster through patches. Each ClusterVariable is associated with a
+// Variable definition in the ClusterClass `status` variables.
 type ClusterVariable struct {
 	// Name of the variable.
 	Name string `json:"name"`
+
+	// DefinitionFrom specifies where the definition of this Variable is from. DefinitionFrom is `inline` when the
+	// definition is from the ClusterClass `.spec.variables` or the name of a patch defined in the ClusterClass
+	// `.spec.patches` where the patch is external and provides external variables.
+	// This field is mandatory if the variable has `DefinitionsConflict: true` in ClusterClass `status.variables[]`
+	// +optional
+	DefinitionFrom string `json:"definitionFrom,omitempty"`
 
 	// Value of the variable.
 	// Note: the value will be validated against the schema of the corresponding ClusterClassVariable
