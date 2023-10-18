@@ -37,11 +37,13 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	cache "sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	rTcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 // The default durations for the leader election operations.
@@ -117,15 +119,16 @@ func main() {
 		LeaderElectionNamespace: *leaderElectResourceNamespace,
 		LeaderElectionID:        "cluster-api-provider-openstack-leader",
 		LeaseDuration:           leaderElectLeaseDuration,
-		MetricsBindAddress:      *metricsAddress,
+		Metrics:                 metricsserver.Options{BindAddress: *metricsAddress},
 		// Slow the default retry and renew election rate to reduce etcd writes at idle: BZ 1858400
 		RetryPeriod:   &retryPeriod,
 		RenewDeadline: &renewDeadline,
-		SyncPeriod:    &syncPeriod,
+		Cache:         cache.Options{SyncPeriod: &syncPeriod},
 	}
+
 	if *watchNamespace != "" {
-		opts.Namespace = *watchNamespace
-		klog.Infof("Watching machine-api objects only in namespace %q for reconciliation.", opts.Namespace)
+		opts.Cache = cache.Options{DefaultNamespaces: map[string]cache.Config{*watchNamespace: {}}}
+		klog.Infof("Watching machine-api objects only in namespace %q for reconciliation.", *watchNamespace)
 	}
 
 	mgr, err := manager.New(cfg, opts)
