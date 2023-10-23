@@ -24,7 +24,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 
-	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha6"
+	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
 	capoerrors "sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/errors"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/names"
@@ -32,42 +32,45 @@ import (
 
 func (s *Service) ReconcileRouter(openStackCluster *infrav1.OpenStackCluster, clusterName string) error {
 	if openStackCluster.Status.Network == nil || openStackCluster.Status.Network.ID == "" {
-		s.scope.Logger.V(3).Info("No need to reconcile router since no network exists.")
+		s.scope.Logger().V(3).Info("No need to reconcile router since no network exists")
 		return nil
 	}
-	if openStackCluster.Status.Network.Subnet == nil || openStackCluster.Status.Network.Subnet.ID == "" {
-		s.scope.Logger.V(4).Info("No need to reconcile router since no subnet exists.")
+	if len(openStackCluster.Status.Network.Subnets) == 0 {
+		s.scope.Logger().V(4).Info("No need to reconcile router since no subnet exists")
 		return nil
 	}
 	if openStackCluster.Status.ExternalNetwork == nil || openStackCluster.Status.ExternalNetwork.ID == "" {
-		s.scope.Logger.V(3).Info("No need to create router, due to missing ExternalNetworkID.")
+		s.scope.Logger().V(3).Info("No need to create router, due to missing ExternalNetworkID")
 		return nil
 	}
 
+	s.scope.Logger().Info("Reconciling router", "cluster", clusterName)
 	routerName := getRouterName(clusterName)
-	s.scope.Logger.Info("Reconciling router", "name", routerName)
+	routerListOpts := routers.ListOpts{Name: routerName}
+	existingRouter := false
+	if openStackCluster.Spec.Router != nil {
+		routerListOpts = openStackCluster.Spec.Router.ToListOpt()
+		existingRouter = true
+	}
 
-	routerList, err := s.client.ListRouter(routers.ListOpts{
-		Name: routerName,
-	})
+	router, err := s.getRouterByFilter(routerListOpts)
 	if err != nil {
 		return err
 	}
 
-	if len(routerList) > 1 {
-		return fmt.Errorf("found %d router with the name %s, which should not happen", len(routerList), routerName)
+	if existingRouter && router.ID == "" {
+		return fmt.Errorf("router not found by routerFilter ")
 	}
 
-	var router *routers.Router
-	if len(routerList) == 0 {
+	if router.ID == "" {
 		var err error
-		router, err = s.createRouter(openStackCluster, clusterName, routerName)
+		createdRouter, err := s.createRouter(openStackCluster, clusterName, routerName)
 		if err != nil {
 			return err
 		}
+		router = *createdRouter
 	} else {
-		router = &routerList[0]
-		s.scope.Logger.V(6).Info(fmt.Sprintf("Reuse existing Router %s with id %s", routerName, router.ID))
+		s.scope.Logger().V(6).Info("Reusing existing router", "name", router.Name, "id", router.ID)
 	}
 
 	routerIPs := []string{}
@@ -75,7 +78,7 @@ func (s *Service) ReconcileRouter(openStackCluster *infrav1.OpenStackCluster, cl
 		routerIPs = append(routerIPs, ip.IPAddress)
 	}
 
-	openStackCluster.Status.Network.Router = &infrav1.Router{
+	openStackCluster.Status.Router = &infrav1.Router{
 		Name: router.Name,
 		ID:   router.ID,
 		Tags: router.Tags,
@@ -83,7 +86,7 @@ func (s *Service) ReconcileRouter(openStackCluster *infrav1.OpenStackCluster, cl
 	}
 
 	if len(openStackCluster.Spec.ExternalRouterIPs) > 0 {
-		if err := s.setRouterExternalIPs(openStackCluster, router); err != nil {
+		if err := s.setRouterExternalIPs(openStackCluster, &router); err != nil {
 			return err
 		}
 	}
@@ -93,28 +96,30 @@ func (s *Service) ReconcileRouter(openStackCluster *infrav1.OpenStackCluster, cl
 		return err
 	}
 
-	createInterface := true
-	// check all router interfaces for an existing port in our subnet.
-INTERFACE_LOOP:
-	for _, iface := range routerInterfaces {
-		for _, ip := range iface.FixedIPs {
-			if ip.SubnetID == openStackCluster.Status.Network.Subnet.ID {
-				createInterface = false
-				break INTERFACE_LOOP
+	// check all router interfaces for an existing port in a cluster subnet.
+	for _, subnet := range openStackCluster.Status.Network.Subnets {
+		createInterface := true
+	INTERFACE_LOOP:
+		for _, iface := range routerInterfaces {
+			for _, ip := range iface.FixedIPs {
+				if ip.SubnetID == subnet.ID {
+					createInterface = false
+					break INTERFACE_LOOP
+				}
 			}
 		}
-	}
 
-	// ... and create a router interface for our subnet.
-	if createInterface {
-		s.scope.Logger.V(4).Info("Creating RouterInterface", "routerID", router.ID, "subnetID", openStackCluster.Status.Network.Subnet.ID)
-		routerInterface, err := s.client.AddRouterInterface(router.ID, routers.AddInterfaceOpts{
-			SubnetID: openStackCluster.Status.Network.Subnet.ID,
-		})
-		if err != nil {
-			return fmt.Errorf("unable to create router interface: %v", err)
+		// ... and create a router interface for our subnet.
+		if createInterface {
+			s.scope.Logger().V(4).Info("Creating RouterInterface", "routerID", router.ID, "subnetID", subnet.ID)
+			routerInterface, err := s.client.AddRouterInterface(router.ID, routers.AddInterfaceOpts{
+				SubnetID: subnet.ID,
+			})
+			if err != nil {
+				return fmt.Errorf("unable to create router interface: %v", err)
+			}
+			s.scope.Logger().V(4).Info("Created RouterInterface", "id", routerInterface.ID)
 		}
-		s.scope.Logger.V(4).Info("Created RouterInterface", "id", routerInterface.ID)
 	}
 	return nil
 }
@@ -160,10 +165,11 @@ func (s *Service) setRouterExternalIPs(openStackCluster *infrav1.OpenStackCluste
 		},
 	}
 
-	for _, externalRouterIP := range openStackCluster.Spec.ExternalRouterIPs {
-		subnetID := externalRouterIP.Subnet.UUID
+	for i := range openStackCluster.Spec.ExternalRouterIPs {
+		externalRouterIP := openStackCluster.Spec.ExternalRouterIPs[i]
+		subnetID := externalRouterIP.Subnet.ID
 		if subnetID == "" {
-			subnet, err := s.GetSubnetByFilter(&externalRouterIP.Subnet.Filter)
+			subnet, err := s.GetSubnetByFilter(&externalRouterIP.Subnet)
 			if err != nil {
 				return fmt.Errorf("failed to get subnet for external router: %w", err)
 			}
@@ -186,7 +192,21 @@ func (s *Service) setRouterExternalIPs(openStackCluster *infrav1.OpenStackCluste
 }
 
 func (s *Service) DeleteRouter(openStackCluster *infrav1.OpenStackCluster, clusterName string) error {
-	router, subnet, err := s.getRouter(clusterName)
+	routerName := getRouterName(clusterName)
+	listOpts := routers.ListOpts{Name: routerName}
+	existingRouter := false
+	if openStackCluster.Spec.Router != nil {
+		listOpts = openStackCluster.Spec.Router.ToListOpt()
+		existingRouter = true
+	}
+
+	router, err := s.getRouterByFilter(listOpts)
+	if err != nil {
+		return err
+	}
+
+	subnetName := getSubnetName(clusterName)
+	subnet, err := s.getSubnetByName(subnetName)
 	if err != nil {
 		return err
 	}
@@ -203,10 +223,15 @@ func (s *Service) DeleteRouter(openStackCluster *infrav1.OpenStackCluster, clust
 			if !capoerrors.IsNotFound(err) {
 				return fmt.Errorf("unable to remove router interface: %v", err)
 			}
-			s.scope.Logger.V(4).Info("Router Interface already removed, nothing to do", "id", router.ID)
+			s.scope.Logger().V(4).Info("Router interface already removed, nothing to do", "id", router.ID)
 		} else {
-			s.scope.Logger.V(4).Info("Removed RouterInterface of Router", "id", router.ID)
+			s.scope.Logger().V(4).Info("Removed RouterInterface of router", "id", router.ID)
 		}
+	}
+
+	if existingRouter {
+		s.scope.Logger().V(4).Info("No need to delete pre-existing router", "name", router.Name)
+		return nil
 	}
 
 	err = s.client.DeleteRouter(router.ID)
@@ -225,26 +250,8 @@ func (s *Service) getRouterInterfaces(routerID string) ([]ports.Port, error) {
 	})
 }
 
-func (s *Service) getRouter(clusterName string) (routers.Router, subnets.Subnet, error) {
-	routerName := getRouterName(clusterName)
-	router, err := s.getRouterByName(routerName)
-	if err != nil {
-		return routers.Router{}, subnets.Subnet{}, err
-	}
-
-	subnetName := getSubnetName(clusterName)
-	subnet, err := s.getSubnetByName(subnetName)
-	if err != nil {
-		return router, subnets.Subnet{}, err
-	}
-
-	return router, subnet, nil
-}
-
-func (s *Service) getRouterByName(routerName string) (routers.Router, error) {
-	routerList, err := s.client.ListRouter(routers.ListOpts{
-		Name: routerName,
-	})
+func (s *Service) getRouterByFilter(opts routers.ListOpts) (routers.Router, error) {
+	routerList, err := s.client.ListRouter(opts)
 	if err != nil {
 		return routers.Router{}, err
 	}
@@ -255,7 +262,7 @@ func (s *Service) getRouterByName(routerName string) (routers.Router, error) {
 	case 1:
 		return routerList[0], nil
 	}
-	return routers.Router{}, fmt.Errorf("found %d router with the name %s, which should not happen", len(routerList), routerName)
+	return routers.Router{}, fmt.Errorf("found %d routers, which should not happen", len(routerList))
 }
 
 func (s *Service) getSubnetByName(subnetName string) (subnets.Subnet, error) {

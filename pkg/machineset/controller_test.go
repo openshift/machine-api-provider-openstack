@@ -21,9 +21,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	cache "sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 var emptyFlavorName = ""
@@ -83,7 +85,7 @@ var _ = Describe("Reconciler", func() {
 	BeforeEach(func() {
 		namespaceName := RandomString("mhc-test-", 5)
 		namespace = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespaceName}}
-		mgr, err := manager.New(cfg, manager.Options{MetricsBindAddress: "0", Namespace: namespace.Name})
+		mgr, err := manager.New(cfg, manager.Options{Metrics: metricsserver.Options{BindAddress: "0"}, Cache: cache.Options{DefaultNamespaces: map[string]cache.Config{namespace.Name: {}}}})
 		Expect(err).ToNot(HaveOccurred())
 
 		r := Reconciler{}

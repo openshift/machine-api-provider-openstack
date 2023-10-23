@@ -17,6 +17,7 @@ limitations under the License.
 package networking
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -25,9 +26,9 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/portsecurity"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/cluster-api/util"
+	"k8s.io/apimachinery/pkg/util/wait"
 
-	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha6"
+	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
 	capoerrors "sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/errors"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/names"
@@ -53,10 +54,12 @@ func (s *Service) GetPortFromInstanceIP(instanceID string, ip string) ([]ports.P
 	return s.client.ListPort(portOpts)
 }
 
-func (s *Service) GetOrCreatePort(eventObject runtime.Object, clusterName string, portName string, net infrav1.Network, instanceSecurityGroups *[]string, instanceTags []string) (*ports.Port, error) {
+func (s *Service) GetOrCreatePort(eventObject runtime.Object, clusterName string, portName string, portOpts *infrav1.PortOpts, instanceSecurityGroups []string, instanceTags []string) (*ports.Port, error) {
+	networkID := portOpts.Network.ID
+
 	existingPorts, err := s.client.ListPort(ports.ListOpts{
 		Name:      portName,
-		NetworkID: net.ID,
+		NetworkID: networkID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("searching for existing port for server: %v", err)
@@ -70,18 +73,12 @@ func (s *Service) GetOrCreatePort(eventObject runtime.Object, clusterName string
 		return nil, fmt.Errorf("multiple ports found with name \"%s\"", portName)
 	}
 
-	// no port found, so create the port
-	portOpts := net.PortOpts
-	if portOpts == nil {
-		portOpts = &infrav1.PortOpts{}
-	}
-
 	description := portOpts.Description
 	if description == "" {
 		description = names.GetDescription(clusterName)
 	}
 
-	var securityGroups *[]string
+	var securityGroups []string
 	addressPairs := []ports.AddressPair{}
 	if portOpts.DisablePortSecurity == nil || !*portOpts.DisablePortSecurity {
 		for _, ap := range portOpts.AllowedAddressPairs {
@@ -90,12 +87,14 @@ func (s *Service) GetOrCreatePort(eventObject runtime.Object, clusterName string
 				MACAddress: ap.MACAddress,
 			})
 		}
-		securityGroups, err = s.CollectPortSecurityGroups(eventObject, portOpts.SecurityGroups, portOpts.SecurityGroupFilters)
-		if err != nil {
-			return nil, err
+		if portOpts.SecurityGroupFilters != nil {
+			securityGroups, err = s.GetSecurityGroups(portOpts.SecurityGroupFilters)
+			if err != nil {
+				return nil, fmt.Errorf("error getting security groups: %v", err)
+			}
 		}
 		// inherit port security groups from the instance if not explicitly specified
-		if securityGroups == nil || len(*securityGroups) == 0 {
+		if len(securityGroups) == 0 {
 			securityGroups = instanceSecurityGroups
 		}
 	}
@@ -104,7 +103,7 @@ func (s *Service) GetOrCreatePort(eventObject runtime.Object, clusterName string
 	if len(portOpts.FixedIPs) > 0 {
 		fips := make([]ports.IP, 0, len(portOpts.FixedIPs)+1)
 		for _, fixedIP := range portOpts.FixedIPs {
-			subnetID, err := s.getSubnetIDForFixedIP(fixedIP.Subnet, net.ID)
+			subnetID, err := s.getSubnetIDForFixedIP(fixedIP.Subnet, networkID)
 			if err != nil {
 				return nil, err
 			}
@@ -113,24 +112,37 @@ func (s *Service) GetOrCreatePort(eventObject runtime.Object, clusterName string
 				IPAddress: fixedIP.IPAddress,
 			})
 		}
-		if net.Subnet.ID != "" {
-			fips = append(fips, ports.IP{SubnetID: net.Subnet.ID})
-		}
 		fixedIPs = fips
 	}
 
+	var valueSpecs *map[string]string
+	if len(portOpts.ValueSpecs) > 0 {
+		vs := make(map[string]string, len(portOpts.ValueSpecs))
+		for _, valueSpec := range portOpts.ValueSpecs {
+			vs[valueSpec.Key] = valueSpec.Value
+		}
+		valueSpecs = &vs
+	}
+
 	var createOpts ports.CreateOptsBuilder
+
+	// Gophercloud expects a *[]string. We translate a nil slice to a nil pointer.
+	var securityGroupsPtr *[]string
+	if securityGroups != nil {
+		securityGroupsPtr = &securityGroups
+	}
+
 	createOpts = ports.CreateOpts{
-		Name:                portName,
-		NetworkID:           net.ID,
-		Description:         description,
-		AdminStateUp:        portOpts.AdminStateUp,
-		MACAddress:          portOpts.MACAddress,
-		TenantID:            portOpts.TenantID,
-		ProjectID:           portOpts.ProjectID,
-		SecurityGroups:      securityGroups,
-		AllowedAddressPairs: addressPairs,
-		FixedIPs:            fixedIPs,
+		Name:                  portName,
+		NetworkID:             networkID,
+		Description:           description,
+		AdminStateUp:          portOpts.AdminStateUp,
+		MACAddress:            portOpts.MACAddress,
+		SecurityGroups:        securityGroupsPtr,
+		AllowedAddressPairs:   addressPairs,
+		FixedIPs:              fixedIPs,
+		ValueSpecs:            valueSpecs,
+		PropagateUplinkStatus: portOpts.PropagateUplinkStatus,
 	}
 
 	if portOpts.DisablePortSecurity != nil {
@@ -205,11 +217,18 @@ func (s *Service) getSubnetIDForFixedIP(subnet *infrav1.SubnetFilter, networkID 
 	}
 }
 
-func getPortProfile(p map[string]string) map[string]interface{} {
+func getPortProfile(p infrav1.BindingProfile) map[string]interface{} {
 	portProfile := make(map[string]interface{})
-	for k, v := range p {
-		portProfile[k] = v
+
+	// if p.OVSHWOffload is true, we need to set the profile
+	// to enable hardware offload for the port
+	if p.OVSHWOffload {
+		portProfile["capabilities"] = []string{"switchdev"}
 	}
+	if p.TrustedVF {
+		portProfile["trusted"] = true
+	}
+
 	// We need return nil if there is no profiles
 	// to have backward compatible defaults.
 	// To set profiles, your tenant needs this permission:
@@ -222,11 +241,13 @@ func getPortProfile(p map[string]string) map[string]interface{} {
 
 func (s *Service) DeletePort(eventObject runtime.Object, portID string) error {
 	var err error
-	err = util.PollImmediate(retryIntervalPortDelete, timeoutPortDelete, func() (bool, error) {
+	err = wait.PollUntilContextTimeout(context.TODO(), retryIntervalPortDelete, timeoutPortDelete, true, func(_ context.Context) (bool, error) {
 		err = s.client.DeletePort(portID)
 		if err != nil {
 			if capoerrors.IsNotFound(err) {
 				record.Eventf(eventObject, "SuccessfulDeletePort", "Port with id %d did not exist", portID)
+				// this is success so we return without another try
+				return true, nil
 			}
 			if capoerrors.IsRetryable(err) {
 				return false, nil
@@ -245,7 +266,12 @@ func (s *Service) DeletePort(eventObject runtime.Object, portID string) error {
 }
 
 func (s *Service) DeletePorts(openStackCluster *infrav1.OpenStackCluster) error {
-	networkID := openStackCluster.Spec.Network.ID
+	// If the network is not ready, do nothing
+	if openStackCluster.Status.Network == nil || openStackCluster.Status.Network.ID == "" {
+		return nil
+	}
+	networkID := openStackCluster.Status.Network.ID
+
 	portList, err := s.client.ListPort(ports.ListOpts{
 		NetworkID:   networkID,
 		DeviceOwner: "",
@@ -260,25 +286,36 @@ func (s *Service) DeletePorts(openStackCluster *infrav1.OpenStackCluster) error 
 	for _, port := range portList {
 		if strings.HasPrefix(port.Name, openStackCluster.Name) {
 			err := s.DeletePort(openStackCluster, port.ID)
-			if capoerrors.IsNotFound(err) {
-				continue
+			if err != nil {
+				return fmt.Errorf("delete port %s of network %q failed : %v", port.ID, networkID, err)
 			}
-			return fmt.Errorf("delete port %s of network %q failed : %v", port.ID, networkID, err)
 		}
 	}
 
 	return nil
 }
 
-func (s *Service) GarbageCollectErrorInstancesPort(eventObject runtime.Object, instanceName string) error {
-	portList, err := s.client.ListPort(ports.ListOpts{
-		Name: instanceName,
-	})
-	if err != nil {
-		return err
-	}
-	for _, p := range portList {
-		if err := s.DeletePort(eventObject, p.ID); err != nil {
+func (s *Service) GarbageCollectErrorInstancesPort(eventObject runtime.Object, instanceName string, portOpts []infrav1.PortOpts) error {
+	for i := range portOpts {
+		portOpt := &portOpts[i]
+
+		portName := GetPortName(instanceName, portOpt, i)
+
+		// TODO: whould be nice if gophercloud could be persuaded to accept multiple
+		// names as is allowed by the API in order to reduce API traffic.
+		portList, err := s.client.ListPort(ports.ListOpts{Name: portName})
+		if err != nil {
+			return err
+		}
+
+		// NOTE: https://github.com/kubernetes-sigs/cluster-api-provider-openstack/issues/1476
+		// It is up to the end user to specify a UNIQUE cluster name when provisioning in the
+		// same project, otherwise things will alias and we could delete more than we should.
+		if len(portList) > 1 {
+			return fmt.Errorf("garbage collection of port %s failed, found %d ports with the same name", portName, len(portList))
+		}
+
+		if err := s.DeletePort(eventObject, portList[0].ID); err != nil {
 			return err
 		}
 	}
@@ -286,40 +323,10 @@ func (s *Service) GarbageCollectErrorInstancesPort(eventObject runtime.Object, i
 	return nil
 }
 
-// CollectPortSecurityGroups collects distinct securityGroups from port.SecurityGroups and port.SecurityGroupFilter fields.
-func (s *Service) CollectPortSecurityGroups(eventObject runtime.Object, portSecurityGroups *[]string, portSecurityGroupFilters []infrav1.SecurityGroupParam) (*[]string, error) {
-	var allSecurityGroupIDs []string
-	// security groups provided with the portSecurityGroupFilters fields
-	securityGroupFiltersByID, err := s.GetSecurityGroups(portSecurityGroupFilters)
-	if err != nil {
-		return portSecurityGroups, fmt.Errorf("error getting security groups: %v", err)
+// GetPortName appends a suffix to an instance name in order to try and get a unique name per port.
+func GetPortName(instanceName string, opts *infrav1.PortOpts, netIndex int) string {
+	if opts != nil && opts.NameSuffix != "" {
+		return fmt.Sprintf("%s-%s", instanceName, opts.NameSuffix)
 	}
-	allSecurityGroupIDs = append(allSecurityGroupIDs, securityGroupFiltersByID...)
-	securityGroupCount := 0
-	// security groups provided with the portSecurityGroups fields
-	if portSecurityGroups != nil {
-		allSecurityGroupIDs = append(allSecurityGroupIDs, *portSecurityGroups...)
-	}
-	// generate unique values
-	uids := make(map[string]int)
-	for _, sg := range allSecurityGroupIDs {
-		if sg == "" {
-			continue
-		}
-		// count distinct values
-		_, ok := uids[sg]
-		if !ok {
-			securityGroupCount++
-		}
-		uids[sg] = 1
-	}
-	distinctSecurityGroupIDs := make([]string, 0, securityGroupCount)
-	// collect distict values
-	for key := range uids {
-		if key == "" {
-			continue
-		}
-		distinctSecurityGroupIDs = append(distinctSecurityGroupIDs, key)
-	}
-	return &distinctSecurityGroupIDs, nil
+	return fmt.Sprintf("%s-%d", instanceName, netIndex)
 }
