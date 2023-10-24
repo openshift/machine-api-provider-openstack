@@ -314,7 +314,10 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 	}
 
 	for _, port := range ps.Ports {
-		portSecurityGroupParams := securityGroupsToSecurityGroupParams(*port.SecurityGroups)
+		var portSecurityGroupParams []machinev1alpha1.SecurityGroupParam
+		if port.SecurityGroups != nil {
+			portSecurityGroupParams = securityGroupsToSecurityGroupParams(*port.SecurityGroups)
+		}
 		capoPort := capov1.PortOpts{
 			Network:              &capov1.NetworkFilter{ID: port.NetworkID},
 			NameSuffix:           port.NameSuffix,
