@@ -125,7 +125,7 @@ func getInstanceStatus(scope scope.Scope, machine *machinev1.Machine) (*compute.
 }
 
 func (oc *OpenstackClient) convertMachineToCapoInstanceSpec(scope scope.Scope, machine *machinev1.Machine) (*compute.InstanceSpec, error) {
-	providerSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	machineSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate MachineSpec object: %v", err)
 	}
@@ -145,7 +145,7 @@ func (oc *OpenstackClient) convertMachineToCapoInstanceSpec(scope scope.Scope, m
 		return nil, err
 	}
 
-	userDataRendered, err := oc.getUserData(machine, providerSpec, oc.params.KubeClient)
+	userDataRendered, err := oc.getUserData(machine, machineSpec, oc.params.KubeClient)
 	if err != nil {
 		return nil, maoMachine.InvalidMachineConfiguration("error creating bootstrap for %s: %v", machine.Name, err)
 	}
@@ -181,7 +181,7 @@ func (oc *OpenstackClient) Update(ctx context.Context, machine *machinev1.Machin
 }
 
 func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Machine) error {
-	providerSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	machineSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return maoMachine.InvalidMachineConfiguration("Cannot unmarshal providerSpec for %s: %v", machine.Name, err)
 	}
@@ -217,13 +217,13 @@ func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Mac
 		return fmt.Errorf("error setting provider ID for %q: %w", machine.Name, err)
 	}
 
-	if err := reconcileFloatingIP(machine, providerSpec, instanceStatus, scope); err != nil {
+	if err := reconcileFloatingIP(machine, machineSpec, instanceStatus, scope); err != nil {
 		return err
 	}
 
 	// Apply labels and annotations and patch the machine object
 	patch := client.MergeFrom(machine.DeepCopy())
-	setMachineLabels(machine, regionName, instanceStatus.AvailabilityZone(), providerSpec.Flavor)
+	setMachineLabels(machine, regionName, instanceStatus.AvailabilityZone(), machineSpec.Flavor)
 	setMachineAnnotations(machine, instanceStatus)
 	if err := oc.client.Patch(ctx, machine, patch); err != nil {
 		return err
@@ -267,8 +267,8 @@ func (oc *OpenstackClient) createInstance(ctx context.Context, machine *machinev
 	return instanceStatus, nil
 }
 
-func reconcileFloatingIP(machine *machinev1.Machine, providerSpec *machinev1alpha1.OpenstackProviderSpec, instanceStatus *compute.InstanceStatus, scope scope.Scope) error {
-	if providerSpec.FloatingIP == "" {
+func reconcileFloatingIP(machine *machinev1.Machine, machineSpec *machinev1alpha1.OpenstackProviderSpec, instanceStatus *compute.InstanceStatus, scope scope.Scope) error {
+	if machineSpec.FloatingIP == "" {
 		return nil
 	}
 
@@ -279,7 +279,7 @@ func reconcileFloatingIP(machine *machinev1.Machine, providerSpec *machinev1alph
 
 	// Look for the floating IP on the server
 	for _, address := range networkStatus.Addresses() {
-		if address.Type == corev1.NodeExternalIP && address.Address == providerSpec.FloatingIP {
+		if address.Type == corev1.NodeExternalIP && address.Address == machineSpec.FloatingIP {
 			return nil
 		}
 	}
@@ -289,7 +289,7 @@ func reconcileFloatingIP(machine *machinev1.Machine, providerSpec *machinev1alph
 		return err
 	}
 	var osCluster capov1.OpenStackCluster
-	fp, err := networkService.GetOrCreateFloatingIP(machine, &osCluster, utils.GetClusterNameWithNamespace(machine), providerSpec.FloatingIP)
+	fp, err := networkService.GetOrCreateFloatingIP(machine, &osCluster, utils.GetClusterNameWithNamespace(machine), machineSpec.FloatingIP)
 	if err != nil {
 		return fmt.Errorf("get floatingIP err: %v", err)
 	}
@@ -327,12 +327,12 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 		return err
 	}
 
-	providerSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	machineSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return err
 	}
 	// Create a minimal instancespec since we don't want to reparse and reconstruct all the networking info just to delete
-	rootVolume, _ := extractRootVolumeFromProviderSpec(providerSpec)
+	rootVolume, _ := extractRootVolumeFromProviderSpec(machineSpec)
 	instanceSpec := compute.InstanceSpec{
 		Ports:      make([]capov1.PortOpts, 0, 0),
 		RootVolume: rootVolume,
