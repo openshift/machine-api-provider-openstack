@@ -9,7 +9,7 @@ require (
 	github.com/gophercloud/utils v0.0.0-20230523080330-de873b9cf00d
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.28.0
-	github.com/openshift/api v0.0.0-20230928105710-23b54c280f99
+	github.com/openshift/api v0.0.0-20231030154605-972704c507c5
 	github.com/openshift/client-go v0.0.0-20230926161409-848405da69e1
 	github.com/openshift/machine-api-operator v0.2.1-0.20231017175643-14a78838d36d
 	k8s.io/api v0.28.2
