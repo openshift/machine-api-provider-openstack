@@ -283,6 +283,35 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 		instanceSpec.Image = ps.RootVolume.SourceUUID
 	}
 
+	if ps.AdditionalBlockDevices != nil {
+		var capoBDType capov1.BlockDeviceType
+		var emptyStorage machinev1alpha1.BlockDeviceStorage
+		instanceSpec.AdditionalBlockDevices = make([]capov1.AdditionalBlockDevice, len(ps.AdditionalBlockDevices))
+		for i, blockDevice := range ps.AdditionalBlockDevices {
+			if blockDevice.Storage == emptyStorage {
+				return nil, fmt.Errorf("missing storage for additional block device")
+			}
+			if blockDevice.Storage.Type == machinev1alpha1.LocalBlockDevice {
+				capoBDType = capov1.LocalBlockDevice
+			} else if blockDevice.Storage.Type == machinev1alpha1.VolumeBlockDevice {
+				capoBDType = capov1.VolumeBlockDevice
+			} else {
+				return nil, fmt.Errorf("unknown block device type: %s", blockDevice.Storage.Type)
+			}
+			instanceSpec.AdditionalBlockDevices[i] = capov1.AdditionalBlockDevice{
+				Name:    blockDevice.Name,
+				SizeGiB: blockDevice.SizeGiB,
+				Storage: capov1.BlockDeviceStorage{Type: capoBDType},
+			}
+			if blockDevice.Storage.Volume != nil {
+				instanceSpec.AdditionalBlockDevices[i].Storage.Volume = &capov1.BlockDeviceVolume{
+					AvailabilityZone: blockDevice.Storage.Volume.AvailabilityZone,
+					Type:             blockDevice.Storage.Volume.Type,
+				}
+			}
+		}
+	}
+
 	if ps.ServerGroupName != "" && ps.ServerGroupID == "" {
 		// We assume that all the hard cases are covered by validation so here it's a matter of checking
 		// for existence of server group and creating it if it doesn't exist.
