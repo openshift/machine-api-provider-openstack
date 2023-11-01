@@ -88,102 +88,44 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 	}
 
 	tags := net.PortTags
-
-	if network.ID == "" && (net.Filter == machinev1alpha1.Filter{}) {
-		// Case: network is undefined and only has subnets
-		// Create a port for each subnet
-		for _, subnet := range net.Subnets {
-			subnet.Filter.ID = coalesce(subnet.UUID, subnet.Filter.ID)
-
-			fixedIP := []capov1.FixedIP{
-				{
-					Subnet: &capov1.SubnetFilter{
-						Name:            subnet.Filter.Name,
-						Description:     subnet.Filter.Description,
-						ProjectID:       coalesce(subnet.Filter.ProjectID, subnet.Filter.TenantID),
-						IPVersion:       subnet.Filter.IPVersion,
-						GatewayIP:       subnet.Filter.GatewayIP,
-						CIDR:            subnet.Filter.CIDR,
-						IPv6AddressMode: subnet.Filter.IPv6AddressMode,
-						IPv6RAMode:      subnet.Filter.IPv6RAMode,
-						ID:              subnet.Filter.ID,
-						Tags:            subnet.Filter.Tags,
-						TagsAny:         subnet.Filter.TagsAny,
-						NotTags:         subnet.Filter.NotTags,
-						NotTagsAny:      subnet.Filter.NotTagsAny,
-					},
-				},
-			}
-
-			portTags := append(tags, subnet.PortTags...)
-
-			port := capov1.PortOpts{
-				Network:             &network,
-				Trunk:               trunk,
-				DisablePortSecurity: disablePortSecurity,
-				VNICType:            net.VNICType,
-				FixedIPs:            fixedIP,
-				Tags:                portTags,
-				Profile:             portProfileToCapov1BindingProfile(net.Profile),
-			}
-
-			if len(addressPairs) > 0 {
-				port.AllowedAddressPairs = addressPairs
-			}
-
-			// Fetch the UUID of the network subnet is attached to or the conversion will fail
-			// NOTE: limited to returning only 1 result, which deviates from CAPO api
-			// but resolves a lot of problems created by the previous api
-			netID, err := getNetworkID(&subnet.Filter, networkService)
-			if err != nil {
-				return []capov1.PortOpts{}, err
-			}
-
-			port.Network.ID = netID
-			ports = append(ports, port)
-
+	// Create a single port with an interface for each subnet
+	fixedIPs := make([]capov1.FixedIP, len(net.Subnets))
+	for i, subnet := range net.Subnets {
+		fixedIPs[i] = capov1.FixedIP{
+			Subnet: &capov1.SubnetFilter{
+				Name:            subnet.Filter.Name,
+				Description:     subnet.Filter.Description,
+				ProjectID:       coalesce(subnet.Filter.ProjectID, subnet.Filter.TenantID),
+				IPVersion:       subnet.Filter.IPVersion,
+				GatewayIP:       subnet.Filter.GatewayIP,
+				CIDR:            subnet.Filter.CIDR,
+				IPv6AddressMode: subnet.Filter.IPv6AddressMode,
+				IPv6RAMode:      subnet.Filter.IPv6RAMode,
+				ID:              coalesce(subnet.UUID, subnet.Filter.ID),
+				Tags:            subnet.Filter.Tags,
+				TagsAny:         subnet.Filter.TagsAny,
+				NotTags:         subnet.Filter.NotTags,
+				NotTagsAny:      subnet.Filter.NotTagsAny,
+			},
 		}
-	} else {
-		// Case: network and subnet are defined
-		// Create a single port with an interface for each subnet
-		fixedIPs := make([]capov1.FixedIP, len(net.Subnets))
-		for i, subnet := range net.Subnets {
-			fixedIPs[i] = capov1.FixedIP{
-				Subnet: &capov1.SubnetFilter{
-					Name:            subnet.Filter.Name,
-					Description:     subnet.Filter.Description,
-					ProjectID:       coalesce(subnet.Filter.ProjectID, subnet.Filter.TenantID),
-					IPVersion:       subnet.Filter.IPVersion,
-					GatewayIP:       subnet.Filter.GatewayIP,
-					CIDR:            subnet.Filter.CIDR,
-					IPv6AddressMode: subnet.Filter.IPv6AddressMode,
-					IPv6RAMode:      subnet.Filter.IPv6RAMode,
-					ID:              coalesce(subnet.UUID, subnet.Filter.ID),
-					Tags:            subnet.Filter.Tags,
-					TagsAny:         subnet.Filter.TagsAny,
-					NotTags:         subnet.Filter.NotTags,
-					NotTagsAny:      subnet.Filter.NotTagsAny,
-				},
-			}
-			tags = append(tags, subnet.PortTags...)
-		}
-
-		port := capov1.PortOpts{
-			Network:             &network,
-			AllowedAddressPairs: addressPairs,
-			Trunk:               trunk,
-			DisablePortSecurity: disablePortSecurity,
-			VNICType:            net.VNICType,
-			FixedIPs:            fixedIPs,
-			Tags:                tags,
-			Profile:             portProfileToCapov1BindingProfile(net.Profile),
-		}
-
-		if len(addressPairs) > 0 {
-			port.AllowedAddressPairs = addressPairs
-		}
-		ports = append(ports, port)
+		tags = append(tags, subnet.PortTags...)
 	}
+
+	port := capov1.PortOpts{
+		Network:             &network,
+		AllowedAddressPairs: addressPairs,
+		Trunk:               trunk,
+		DisablePortSecurity: disablePortSecurity,
+		VNICType:            net.VNICType,
+		FixedIPs:            fixedIPs,
+		Tags:                tags,
+		Profile:             portProfileToCapov1BindingProfile(net.Profile),
+	}
+	if len(addressPairs) > 0 {
+		port.AllowedAddressPairs = addressPairs
+	}
+
+	ports = append(ports, port)
 
 	return ports, nil
 }
