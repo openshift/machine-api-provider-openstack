@@ -176,6 +176,7 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 			VNICType:            net.VNICType,
 			FixedIPs:            fixedIPs,
 			Tags:                tags,
+			Profile:             portProfileToCapov1BindingProfile(net.Profile),
 		}
 
 		if len(addressPairs) > 0 {
