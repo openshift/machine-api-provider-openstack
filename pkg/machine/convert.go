@@ -3,6 +3,7 @@ package machine
 import (
 	"fmt"
 
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/servergroups"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
@@ -14,6 +15,11 @@ import (
 
 type subnetsGetter interface {
 	GetSubnetsByFilter(opts subnets.ListOptsBuilder) ([]subnets.Subnet, error)
+}
+
+type instanceService interface {
+	GetServerGroupsByName(name string) ([]servergroups.ServerGroup, error)
+	CreateServerGroup(name string) (*servergroups.ServerGroup, error)
 }
 
 // Looks up a subnet in openstack and gets the ID of the network its attached to
@@ -194,7 +200,7 @@ func injectDefaultTags(instanceSpec *compute.InstanceSpec, machine *machinev1bet
 	instanceSpec.Tags = append(instanceSpec.Tags, defaultTags...)
 }
 
-func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, networkService subnetsGetter, instanceService *clients.InstanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
+func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, networkService subnetsGetter, instanceService instanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
 	ps, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return nil, err

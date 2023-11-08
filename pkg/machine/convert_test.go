@@ -1,11 +1,17 @@
 package machine
 
 import (
+	"encoding/json"
+	"reflect"
 	"testing"
 
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/servergroups"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
+	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
+	"k8s.io/apimachinery/pkg/runtime"
 	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha6"
+	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 )
 
 type testSubnetsGetter struct{}
@@ -16,6 +22,24 @@ func (testSubnetsGetter) GetSubnetsByFilter(opts subnets.ListOptsBuilder) ([]sub
 
 func newSubnetsGetter() testSubnetsGetter {
 	return testSubnetsGetter{}
+}
+
+type testInstanceService struct{}
+
+func (testInstanceService) GetServerGroupsByName(name string) ([]servergroups.ServerGroup, error) {
+	return []servergroups.ServerGroup{}, nil
+}
+
+func (testInstanceService) CreateServerGroup(name string) (*servergroups.ServerGroup, error) {
+	servergroup := servergroups.ServerGroup{
+		Name:     "fakeServerGroup",
+		Policies: []string{"soft-anti-affinity"},
+	}
+	return &servergroup, nil
+}
+
+func newInstanceService() testInstanceService {
+	return testInstanceService{}
 }
 
 func newNetworkParam(options ...func(*machinev1alpha1.NetworkParam)) *machinev1alpha1.NetworkParam {
@@ -221,6 +245,151 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 			)
 			for _, check := range tc.check {
 				check(t, portOpts, err)
+			}
+		})
+	}
+}
+
+func TestMachineToInstanceSpec(t *testing.T) {
+	tests := []struct {
+		name         string
+		providerSpec *machinev1alpha1.OpenstackProviderSpec
+		expected     *compute.InstanceSpec
+	}{
+		{
+			name:         "minimal",
+			providerSpec: &machinev1alpha1.OpenstackProviderSpec{},
+			expected: &compute.InstanceSpec{
+				Tags: []string{
+					"cluster-api-provider-openstack",
+					"-",
+				},
+				Ports:          []capov1.PortOpts{},
+				SecurityGroups: []capov1.SecurityGroupParam{},
+			},
+		},
+		{
+			name: "with image",
+			providerSpec: &machinev1alpha1.OpenstackProviderSpec{
+				Image: "92f33707-6e04-4756-b470-6902f01289bb",
+			},
+			expected: &compute.InstanceSpec{
+				Image:          "92f33707-6e04-4756-b470-6902f01289bb",
+				Ports:          []capov1.PortOpts{},
+				SecurityGroups: []capov1.SecurityGroupParam{},
+				Tags: []string{
+					"cluster-api-provider-openstack",
+					"-",
+				},
+			},
+		},
+		{
+			name: "with root volume",
+			providerSpec: &machinev1alpha1.OpenstackProviderSpec{
+				RootVolume: &machinev1alpha1.RootVolume{
+					SourceUUID: "f4dd1746-bba9-4932-be83-1b20d0a5adc9",
+					Size:       10,
+				},
+			},
+			expected: &compute.InstanceSpec{
+				Image: "f4dd1746-bba9-4932-be83-1b20d0a5adc9",
+				Ports: []capov1.PortOpts{},
+				RootVolume: &capov1.RootVolume{
+					Size:             10,
+					VolumeType:       "",
+					AvailabilityZone: "",
+				},
+				SecurityGroups: []capov1.SecurityGroupParam{},
+				Tags: []string{
+					"cluster-api-provider-openstack",
+					"-",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bytes, err := json.Marshal(tt.providerSpec)
+			if err != nil {
+				t.Fatal("Failed to marshal provider spec")
+			}
+
+			machine := machinev1beta1.Machine{
+				Spec: machinev1beta1.MachineSpec{
+					ProviderSpec: machinev1beta1.ProviderSpec{
+						Value: &runtime.RawExtension{
+							Raw: bytes,
+						},
+					},
+				},
+			}
+			apiVIPs := []string{}
+			ingressVIPs := []string{}
+			userData := ""
+			networkService := newSubnetsGetter()
+			instanceService := newInstanceService()
+			ignoreAddressPairs := false
+
+			actual, err := MachineToInstanceSpec(
+				&machine,
+				apiVIPs,
+				ingressVIPs,
+				userData,
+				networkService,
+				instanceService,
+				ignoreAddressPairs,
+			)
+			if err != nil {
+				t.Fatalf("Expected no error, found one: %v", err)
+			}
+			if !reflect.DeepEqual(*actual, *tt.expected) {
+				t.Errorf("MachineToInstanceSpec() = %#v, want %#v", *actual, *tt.expected)
+				if !reflect.DeepEqual(actual.Name, tt.expected.Name) {
+					t.Errorf("Mismatched Name, expected %s, got %s", tt.expected.Name, actual.Name)
+				}
+				if !reflect.DeepEqual(actual.Image, tt.expected.Image) {
+					t.Errorf("Mismatched Image, expected %s, got %s", tt.expected.Image, actual.Image)
+				}
+				if !reflect.DeepEqual(actual.ImageUUID, tt.expected.ImageUUID) {
+					t.Errorf("Mismatched ImageUUID, expected %s, got %s", tt.expected.ImageUUID, actual.ImageUUID)
+				}
+				if !reflect.DeepEqual(actual.Flavor, tt.expected.Flavor) {
+					t.Errorf("Mismatched Flavor, expected %s, got %s", tt.expected.Flavor, actual.Flavor)
+				}
+				if !reflect.DeepEqual(actual.SSHKeyName, tt.expected.SSHKeyName) {
+					t.Errorf("Mismatched SSHKeyName, expected %s, got %s", tt.expected.SSHKeyName, actual.SSHKeyName)
+				}
+				if !reflect.DeepEqual(actual.UserData, tt.expected.UserData) {
+					t.Errorf("Mismatched UserData, expected %s, got %s", tt.expected.UserData, actual.UserData)
+				}
+				if !reflect.DeepEqual(actual.Metadata, tt.expected.Metadata) {
+					t.Errorf("Mismatched Metadata, expected %#v, got %#v", tt.expected.Metadata, actual.Metadata)
+				}
+				if !reflect.DeepEqual(actual.ConfigDrive, tt.expected.ConfigDrive) {
+					t.Errorf("Mismatched ConfigDrive, expected %t, got %t", tt.expected.ConfigDrive, actual.ConfigDrive)
+				}
+				if !reflect.DeepEqual(actual.FailureDomain, tt.expected.FailureDomain) {
+					t.Errorf("Mismatched FailureDomain, expected %s, got %s", tt.expected.FailureDomain, actual.FailureDomain)
+				}
+				if !reflect.DeepEqual(actual.RootVolume, tt.expected.RootVolume) {
+					t.Errorf("Mismatched RootVolume, expected %#v, got %#v", tt.expected.RootVolume, actual.RootVolume)
+				}
+				if !reflect.DeepEqual(actual.ServerGroupID, tt.expected.ServerGroupID) {
+					t.Errorf("Mismatched ServerGroupID, expected %s, got %s", tt.expected.ServerGroupID, actual.ServerGroupID)
+				}
+				if !reflect.DeepEqual(actual.Trunk, tt.expected.Trunk) {
+					t.Errorf("Mismatched Trunk, expected %t, got %t", tt.expected.Trunk, actual.Trunk)
+				}
+				if !reflect.DeepEqual(actual.Tags, tt.expected.Tags) {
+					t.Errorf("Mismatched Tags, expected %#v, got %#v", tt.expected.Tags, actual.Tags)
+				}
+				if !reflect.DeepEqual(actual.SecurityGroups, tt.expected.SecurityGroups) {
+					t.Errorf("Mismatched SecurityGroups, expected %#v, got %#v", tt.expected.SecurityGroups, actual.SecurityGroups)
+				}
+				if !reflect.DeepEqual(actual.Ports, tt.expected.Ports) {
+					t.Errorf("Mismatched Ports, expected %#v, got %#v", tt.expected.Ports, actual.Ports)
+				}
 			}
 		})
 	}
