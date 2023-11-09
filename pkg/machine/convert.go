@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/servergroups"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
@@ -15,6 +16,11 @@ import (
 
 type subnetsGetter interface {
 	GetSubnetsByFilter(opts subnets.ListOptsBuilder) ([]subnets.Subnet, error)
+}
+
+type instanceService interface {
+	GetServerGroupsByName(name string) ([]servergroups.ServerGroup, error)
+	CreateServerGroup(name string) (*servergroups.ServerGroup, error)
 }
 
 // Looks up a subnet in openstack and gets the ID of the network its attached to
@@ -188,12 +194,32 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 	return ports, nil
 }
 
-func injectDefaultTags(instanceSpec *compute.InstanceSpec, machine *machinev1beta1.Machine) {
+func extractDefaultTags(machine *machinev1beta1.Machine) []string {
 	defaultTags := []string{
 		"cluster-api-provider-openstack",
 		utils.GetClusterNameWithNamespace(machine),
 	}
-	instanceSpec.Tags = append(instanceSpec.Tags, defaultTags...)
+	return defaultTags
+}
+
+// extractRootVolumeFromProviderSpec extracts pertinent root volume information from a provider spec
+func extractRootVolumeFromProviderSpec(providerSpec *machinev1alpha1.OpenstackProviderSpec) (*capov1.RootVolume, string) {
+	var rootVolume *capov1.RootVolume
+	var image string
+
+	rootVolume = &capov1.RootVolume{
+		Size:             providerSpec.RootVolume.Size,
+		VolumeType:       providerSpec.RootVolume.VolumeType,
+		AvailabilityZone: providerSpec.RootVolume.Zone,
+	}
+
+	// TODO(dulek): Installer does not populate ps.Image when ps.RootVolume is set and will instead
+	//              populate ps.RootVolume.SourceUUID. Moreover, according to the ClusterOSImage
+	//              option definition this is always the name of the image and never the UUID.
+	//              We should allow UUID at some point and this will need an update.
+	image = providerSpec.RootVolume.SourceUUID
+
+	return rootVolume, image
 }
 
 func securityGroupParamToCapov1SecurityGroupFilter(psSecurityGroups []machinev1alpha1.SecurityGroupParam) []capov1.SecurityGroupFilter {
@@ -246,7 +272,7 @@ func portProfileToCapov1BindingProfile(portProfile map[string]string) capov1.Bin
 	return bindingProfile
 }
 
-func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, networkService subnetsGetter, instanceService *clients.InstanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
+func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, networkService subnetsGetter, instanceService instanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
 	ps, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return nil, err
@@ -268,20 +294,9 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 		SecurityGroups: securityGroupParamToCapov1SecurityGroupFilter(ps.SecurityGroups),
 	}
 
-	injectDefaultTags(&instanceSpec, machine)
-
+	instanceSpec.Tags = append(instanceSpec.Tags, extractDefaultTags(machine)...)
 	if ps.RootVolume != nil {
-		instanceSpec.RootVolume = &capov1.RootVolume{
-			Size:             ps.RootVolume.Size,
-			VolumeType:       ps.RootVolume.VolumeType,
-			AvailabilityZone: ps.RootVolume.Zone,
-		}
-
-		// TODO(dulek): Installer does not populate ps.Image when ps.RootVolume is set and will instead
-		//              populate ps.RootVolume.SourceUUID. Moreover, according to the ClusterOSImage
-		//              option definition this is always the name of the image and never the UUID.
-		//              We should allow UUID at some point and this will need an update.
-		instanceSpec.Image = ps.RootVolume.SourceUUID
+		instanceSpec.RootVolume, instanceSpec.Image = extractRootVolumeFromProviderSpec(ps)
 	}
 
 	if ps.AdditionalBlockDevices != nil {
