@@ -137,15 +137,6 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 				port.AllowedAddressPairs = addressPairs
 			}
 
-			// Fetch the UUID of the network subnet is attached to or the conversion will fail
-			// NOTE: limited to returning only 1 result, which deviates from CAPO api
-			// but resolves a lot of problems created by the previous api
-			netID, err := getNetworkID(&subnet.Filter, networkService)
-			if err != nil {
-				return []capov1.PortOpts{}, err
-			}
-
-			port.Network.ID = netID
 			ports = append(ports, port)
 
 		}
