@@ -601,3 +601,29 @@ func TestMachineToInstanceSpec(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractImageFromProviderSpec(t *testing.T) {
+	t.Run("with a nil root volume", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("unexpected panic: %v", r)
+			}
+		}()
+		if expected, actual := "", extractImageFromProviderSpec(&machinev1alpha1.OpenstackProviderSpec{}); expected != actual {
+			t.Errorf("expected image to be %q, got %q", expected, actual)
+		}
+	})
+}
+
+func TestExtractRootVolumeFromProviderSpec(t *testing.T) {
+	t.Run("with a nil root volume", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("unexpected panic: %v", r)
+			}
+		}()
+		if expected, actual := (*capov1.RootVolume)(nil), extractRootVolumeFromProviderSpec(&machinev1alpha1.OpenstackProviderSpec{}); expected != actual {
+			t.Errorf("expected root volume to be %q, got %q", expected, actual)
+		}
+	})
+}
