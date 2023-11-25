@@ -193,24 +193,27 @@ func extractDefaultTags(machine *machinev1beta1.Machine) []string {
 	return defaultTags
 }
 
-// extractRootVolumeFromProviderSpec extracts pertinent root volume information from a provider spec
-func extractRootVolumeFromProviderSpec(providerSpec *machinev1alpha1.OpenstackProviderSpec) (*capov1.RootVolume, string) {
-	var rootVolume *capov1.RootVolume
-	var image string
+func extractImageFromProviderSpec(providerSpec *machinev1alpha1.OpenstackProviderSpec) string {
+	if providerSpec.RootVolume != nil {
+		// TODO(dulek): Installer does not populate ps.Image when ps.RootVolume is set and will instead
+		//              populate ps.RootVolume.SourceUUID. Moreover, according to the ClusterOSImage
+		//              option definition this is always the name of the image and never the UUID.
+		//              We should allow UUID at some point and this will need an update.
+		return providerSpec.RootVolume.SourceUUID
+	}
+	return providerSpec.Image
+}
 
-	rootVolume = &capov1.RootVolume{
+func extractRootVolumeFromProviderSpec(providerSpec *machinev1alpha1.OpenstackProviderSpec) *capov1.RootVolume {
+	if providerSpec.RootVolume == nil {
+		return nil
+	}
+
+	return &capov1.RootVolume{
 		Size:             providerSpec.RootVolume.Size,
 		VolumeType:       providerSpec.RootVolume.VolumeType,
 		AvailabilityZone: providerSpec.RootVolume.Zone,
 	}
-
-	// TODO(dulek): Installer does not populate ps.Image when ps.RootVolume is set and will instead
-	//              populate ps.RootVolume.SourceUUID. Moreover, according to the ClusterOSImage
-	//              option definition this is always the name of the image and never the UUID.
-	//              We should allow UUID at some point and this will need an update.
-	image = providerSpec.RootVolume.SourceUUID
-
-	return rootVolume, image
 }
 
 func securityGroupParamToCapov1SecurityGroupFilter(psSecurityGroups []machinev1alpha1.SecurityGroupParam) []capov1.SecurityGroupFilter {
@@ -271,7 +274,8 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 
 	instanceSpec := compute.InstanceSpec{
 		Name:           machine.Name,
-		Image:          ps.Image,
+		Image:          extractImageFromProviderSpec(ps),
+		RootVolume:     extractRootVolumeFromProviderSpec(ps),
 		Flavor:         ps.Flavor,
 		SSHKeyName:     ps.KeyName,
 		UserData:       userData,
@@ -286,9 +290,6 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 	}
 
 	instanceSpec.Tags = append(instanceSpec.Tags, extractDefaultTags(machine)...)
-	if ps.RootVolume != nil {
-		instanceSpec.RootVolume, instanceSpec.Image = extractRootVolumeFromProviderSpec(ps)
-	}
 
 	if ps.AdditionalBlockDevices != nil {
 		var capoBDType capov1.BlockDeviceType
