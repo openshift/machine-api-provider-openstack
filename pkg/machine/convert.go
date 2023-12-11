@@ -3,6 +3,7 @@ package machine
 import (
 	"fmt"
 
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/servergroups"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
@@ -14,6 +15,11 @@ import (
 
 type subnetsGetter interface {
 	GetSubnetsByFilter(opts subnets.ListOptsBuilder) ([]subnets.Subnet, error)
+}
+
+type instanceService interface {
+	GetServerGroupsByName(name string) ([]servergroups.ServerGroup, error)
+	CreateServerGroup(name string) (*servergroups.ServerGroup, error)
 }
 
 // Looks up a subnet in openstack and gets the ID of the network its attached to
@@ -186,15 +192,38 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 	return ports, nil
 }
 
-func injectDefaultTags(instanceSpec *compute.InstanceSpec, machine *machinev1beta1.Machine) {
+func extractDefaultTags(machine *machinev1beta1.Machine) []string {
 	defaultTags := []string{
 		"cluster-api-provider-openstack",
 		utils.GetClusterNameWithNamespace(machine),
 	}
-	instanceSpec.Tags = append(instanceSpec.Tags, defaultTags...)
+	return defaultTags
 }
 
-func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, networkService subnetsGetter, instanceService *clients.InstanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
+func extractImageFromProviderSpec(providerSpec *machinev1alpha1.OpenstackProviderSpec) string {
+	if providerSpec.RootVolume != nil {
+		// TODO(dulek): Installer does not populate ps.Image when ps.RootVolume is set and will instead
+		//              populate ps.RootVolume.SourceUUID. Moreover, according to the ClusterOSImage
+		//              option definition this is always the name of the image and never the UUID.
+		//              We should allow UUID at some point and this will need an update.
+		return providerSpec.RootVolume.SourceUUID
+	}
+	return providerSpec.Image
+}
+
+func extractRootVolumeFromProviderSpec(providerSpec *machinev1alpha1.OpenstackProviderSpec) *capov1.RootVolume {
+	if providerSpec.RootVolume == nil {
+		return nil
+	}
+
+	return &capov1.RootVolume{
+		Size:             providerSpec.RootVolume.Size,
+		VolumeType:       providerSpec.RootVolume.VolumeType,
+		AvailabilityZone: providerSpec.RootVolume.Zone,
+	}
+}
+
+func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, networkService subnetsGetter, instanceService instanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
 	ps, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return nil, err
@@ -202,7 +231,8 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 
 	instanceSpec := compute.InstanceSpec{
 		Name:           machine.Name,
-		Image:          ps.Image,
+		Image:          extractImageFromProviderSpec(ps),
+		RootVolume:     extractRootVolumeFromProviderSpec(ps),
 		Flavor:         ps.Flavor,
 		SSHKeyName:     ps.KeyName,
 		UserData:       userData,
@@ -216,21 +246,7 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 		SecurityGroups: make([]capov1.SecurityGroupParam, len(ps.SecurityGroups)),
 	}
 
-	injectDefaultTags(&instanceSpec, machine)
-
-	if ps.RootVolume != nil {
-		instanceSpec.RootVolume = &capov1.RootVolume{
-			Size:             ps.RootVolume.Size,
-			VolumeType:       ps.RootVolume.VolumeType,
-			AvailabilityZone: ps.RootVolume.Zone,
-		}
-
-		// TODO(dulek): Installer does not populate ps.Image when ps.RootVolume is set and will instead
-		//              populate ps.RootVolume.SourceUUID. Moreover, according to the ClusterOSImage
-		//              option definition this is always the name of the image and never the UUID.
-		//              We should allow UUID at some point and this will need an update.
-		instanceSpec.Image = ps.RootVolume.SourceUUID
-	}
+	instanceSpec.Tags = append(instanceSpec.Tags, extractDefaultTags(machine)...)
 
 	if ps.ServerGroupName != "" && ps.ServerGroupID == "" {
 		// We assume that all the hard cases are covered by validation so here it's a matter of checking
@@ -244,11 +260,11 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 		} else if len(serverGroups) == 0 {
 			serverGroup, err := instanceService.CreateServerGroup(ps.ServerGroupName)
 			if err != nil {
-				return nil, fmt.Errorf("Error when creating a server group: %v", err)
+				return nil, fmt.Errorf("error when creating a server group: %v", err)
 			}
 			instanceSpec.ServerGroupID = serverGroup.ID
 		} else {
-			return nil, fmt.Errorf("More than one server group of name %s exists", ps.ServerGroupName)
+			return nil, fmt.Errorf("more than one server group of name %s exists", ps.ServerGroupName)
 		}
 	}
 
