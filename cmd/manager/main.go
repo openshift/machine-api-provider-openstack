@@ -55,8 +55,6 @@ var (
 )
 
 func main() {
-
-	flag.Set("logtostderr", "true")
 	watchNamespace := flag.String(
 		"namespace",
 		"",
