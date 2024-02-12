@@ -841,7 +841,7 @@ sigs.k8s.io/cluster-api/feature
 sigs.k8s.io/cluster-api/util/labels/format
 sigs.k8s.io/cluster-api/util/topology
 sigs.k8s.io/cluster-api/util/version
-# sigs.k8s.io/cluster-api-provider-openstack v0.6.3 => github.com/openshift/cluster-api-provider-openstack v0.8.0-beta.0.0.20231030165925-6fdfd82f7ad4
+# sigs.k8s.io/cluster-api-provider-openstack v0.8.0 => github.com/openshift/cluster-api-provider-openstack v0.8.0-beta.0.0.20240205103940-d1de8c63ee93
 ## explicit; go 1.20
 sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7
 sigs.k8s.io/cluster-api-provider-openstack/pkg/clients
@@ -1003,4 +1003,4 @@ sigs.k8s.io/structured-merge-diff/v4/value
 sigs.k8s.io/yaml
 # github.com/elazarl/goproxy => github.com/elazarl/goproxy v0.0.0-20230731152917-f99041a5c027
 # sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.5.2
-# sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.8.0-beta.0.0.20231030165925-6fdfd82f7ad4
+# sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.8.0-beta.0.0.20240205103940-d1de8c63ee93
