@@ -259,7 +259,7 @@ func (oc *OpenstackClient) createInstance(ctx context.Context, machine *machinev
 
 	var osCluster capov1.OpenStackCluster
 	clusterNameWithNamespace := utils.GetClusterNameWithNamespace(machine)
-	instanceStatus, err := computeService.CreateInstance(machine, &osCluster, instanceSpec, clusterNameWithNamespace, false)
+	instanceStatus, err := computeService.CreateInstance(machine, &osCluster, instanceSpec, clusterNameWithNamespace)
 	if err != nil {
 		return nil, maoMachine.CreateMachine("error creating Openstack instance: %v", err)
 	}
