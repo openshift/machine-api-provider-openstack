@@ -297,19 +297,25 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 	}
 
 	for _, port := range ps.Ports {
+		disablePortSecurity := port.PortSecurity
+		if disablePortSecurity != nil {
+			ps := !*disablePortSecurity
+			disablePortSecurity = &ps
+		}
 		capoPort := capov1.PortOpts{
-			Network:        &capov1.NetworkFilter{ID: port.NetworkID},
-			NameSuffix:     port.NameSuffix,
-			Description:    port.Description,
-			AdminStateUp:   port.AdminStateUp,
-			MACAddress:     port.MACAddress,
-			ProjectID:      port.ProjectID,
-			TenantID:       port.TenantID,
-			FixedIPs:       make([]capov1.FixedIP, len(port.FixedIPs)),
-			SecurityGroups: port.SecurityGroups,
-			VNICType:       port.VNICType,
-			Profile:        port.Profile,
-			Trunk:          port.Trunk,
+			Network:             &capov1.NetworkFilter{ID: port.NetworkID},
+			NameSuffix:          port.NameSuffix,
+			Description:         port.Description,
+			AdminStateUp:        port.AdminStateUp,
+			MACAddress:          port.MACAddress,
+			ProjectID:           port.ProjectID,
+			TenantID:            port.TenantID,
+			DisablePortSecurity: disablePortSecurity,
+			FixedIPs:            make([]capov1.FixedIP, len(port.FixedIPs)),
+			SecurityGroups:      port.SecurityGroups,
+			VNICType:            port.VNICType,
+			Profile:             port.Profile,
+			Trunk:               port.Trunk,
 		}
 
 		if !ignoreAddressPairs {
