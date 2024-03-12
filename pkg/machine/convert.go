@@ -123,6 +123,11 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 
 			portTags := append(tags, subnet.PortTags...)
 
+			// Add the value of "disablePortSecurity" to the portTags for debugging purposes
+			if disablePortSecurity != nil {
+				portTags = append(portTags, fmt.Sprintf("disablePortSecurity=%t", *disablePortSecurity))
+			}
+
 			port := capov1.PortOpts{
 				Network:             &network,
 				Trunk:               trunk,
