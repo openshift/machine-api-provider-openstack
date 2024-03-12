@@ -355,12 +355,18 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 		if port.SecurityGroups != nil {
 			portSecurityGroupParams = securityGroupsToSecurityGroupParams(*port.SecurityGroups)
 		}
+		disablePortSecurity := port.PortSecurity
+		if disablePortSecurity != nil {
+			ps := !*disablePortSecurity
+			disablePortSecurity = &ps
+		}
 		capoPort := capov1.PortOpts{
 			Network:              &capov1.NetworkFilter{ID: port.NetworkID},
 			NameSuffix:           port.NameSuffix,
 			Description:          port.Description,
 			AdminStateUp:         port.AdminStateUp,
 			MACAddress:           port.MACAddress,
+			DisablePortSecurity:  disablePortSecurity,
 			FixedIPs:             make([]capov1.FixedIP, len(port.FixedIPs)),
 			SecurityGroupFilters: securityGroupParamToCapov1SecurityGroupFilter(portSecurityGroupParams),
 			VNICType:             port.VNICType,
