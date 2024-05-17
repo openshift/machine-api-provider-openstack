@@ -135,11 +135,6 @@ func (oc *OpenstackClient) convertMachineToCapoInstanceSpec(scope scope.Scope, m
 		return nil, fmt.Errorf("failed to retrieve cluster Infrastructure object: %v", err)
 	}
 
-	networkService, err := networking.NewService(scope)
-	if err != nil {
-		return nil, err
-	}
-
 	instanceService, err := clients.NewInstanceServiceFromMachine(oc.params.KubeClient, machine)
 	if err != nil {
 		return nil, err
@@ -162,7 +157,7 @@ func (oc *OpenstackClient) convertMachineToCapoInstanceSpec(scope scope.Scope, m
 		machine,
 		clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIPs,
 		clusterInfra.Status.PlatformStatus.OpenStack.IngressIPs,
-		userDataRendered, networkService, instanceService,
+		userDataRendered, instanceService,
 		ignoreAddressPairs,
 	)
 	if err != nil {
@@ -333,7 +328,10 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 	}
 	// Create a minimal instancespec since we don't want to reparse and reconstruct all the networking info just to delete
 	instanceSpec := compute.InstanceSpec{
-		Ports:      make([]capov1.PortOpts, 0, 0),
+		Name: machine.Name,
+		// Ports are required when deleting a server in the ERROR state: OCPBUGS-33806
+		// We only need a list of port names, so apiVIPs and ingressVIPs are unnecessary
+		Ports:      createCAPOPorts(machineSpec, nil, nil, true),
 		RootVolume: extractRootVolumeFromProviderSpec(machineSpec),
 	}
 
