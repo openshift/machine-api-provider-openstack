@@ -230,26 +230,21 @@ func TestSecurityGroupParamToCapov1SecurityGroupFilter(t *testing.T) {
 }
 
 func TestNetworkParamToCapov1PortOpt(t *testing.T) {
-	type checkFunc func(*testing.T, []capov1.PortOpts, error)
+	type checkFunc func(*testing.T, []capov1.PortOpts)
 	type portCheckFunc func(*testing.T, capov1.PortOpts)
 	type fixedIPCheckFunc func(*testing.T, capov1.FixedIP)
 
 	that := func(fns ...checkFunc) []checkFunc { return fns }
 	hasPorts := func(want int) checkFunc {
-		return func(t *testing.T, ports []capov1.PortOpts, _ error) {
+		return func(t *testing.T, ports []capov1.PortOpts) {
 			if have := len(ports); want != have {
 				t.Errorf("expected %d ports, found %d", want, have)
 			}
 		}
 	}
-	noErrors := func(t *testing.T, _ []capov1.PortOpts, err error) {
-		if err != nil {
-			t.Errorf("expected no error, found one: %v", err)
-		}
-	}
 
 	port := func(i int, fns ...portCheckFunc) checkFunc {
-		return func(t *testing.T, ports []capov1.PortOpts, _ error) {
+		return func(t *testing.T, ports []capov1.PortOpts) {
 			if len(ports) <= i {
 				t.Errorf("error checking port %d: no such port", i)
 				return
@@ -338,7 +333,6 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 			check: that(
 				hasPorts(1),
 				port(0, hasNetworkProjectID("05245421-300f-4921-8b92-7a9b87fbe35a")),
-				noErrors,
 			),
 		},
 		{
@@ -350,7 +344,6 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 			check: that(
 				hasPorts(1),
 				port(0, hasNetworkProjectID("50557a2a-8d31-43cd-9a2f-d8ccce1493ea")),
-				noErrors,
 			),
 		},
 		{
@@ -365,7 +358,6 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 				port(0, hasFixedIPs(1), fixedIP(0, hasSubnetID("subnet-A-UUID")), hasTags("uno")),
 				port(1, hasFixedIPs(1), fixedIP(0, hasSubnetID("subnet-B-UUID")), hasTags("due")),
 				port(2, hasFixedIPs(1), fixedIP(0, hasSubnetID("subnet-C-UUID")), hasTags("tre")),
-				noErrors,
 			),
 		},
 		{
@@ -385,21 +377,19 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 					fixedIP(2, hasSubnetID("subnet-C-UUID")),
 					hasTags("uno", "due", "tre"),
 				),
-				noErrors,
 			),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			portOpts, err := networkParamToCapov1PortOpt(
+			portOpts := networkParamToCapov1PortOpt(
 				tc.networkParam,
 				nil,
 				nil,
 				nil,
-				newSubnetsGetter(),
 				false,
 			)
 			for _, check := range tc.check {
-				check(t, portOpts, err)
+				check(t, portOpts)
 			}
 		})
 	}
@@ -531,7 +521,6 @@ func TestMachineToInstanceSpec(t *testing.T) {
 			apiVIPs := []string{}
 			ingressVIPs := []string{}
 			userData := ""
-			networkService := newSubnetsGetter()
 			instanceService := newInstanceService()
 			ignoreAddressPairs := false
 
@@ -540,7 +529,6 @@ func TestMachineToInstanceSpec(t *testing.T) {
 				apiVIPs,
 				ingressVIPs,
 				userData,
-				networkService,
 				instanceService,
 				ignoreAddressPairs,
 			)

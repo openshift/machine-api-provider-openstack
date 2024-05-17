@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/servergroups"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
@@ -14,47 +13,13 @@ import (
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 )
 
-type subnetsGetter interface {
-	GetSubnetsByFilter(opts subnets.ListOptsBuilder) ([]subnets.Subnet, error)
-}
-
 type instanceService interface {
 	GetServerGroupsByName(name string) ([]servergroups.ServerGroup, error)
 	CreateServerGroup(name string) (*servergroups.ServerGroup, error)
 }
 
-// Looks up a subnet in openstack and gets the ID of the network its attached to
-func getNetworkID(filter *machinev1alpha1.SubnetFilter, networkService subnetsGetter) (string, error) {
-	listOpts := subnets.ListOpts{
-		Name:            filter.Name,
-		Description:     filter.Description,
-		ProjectID:       filter.ProjectID,
-		TenantID:        filter.TenantID,
-		IPVersion:       filter.IPVersion,
-		GatewayIP:       filter.GatewayIP,
-		CIDR:            filter.CIDR,
-		IPv6AddressMode: filter.IPv6AddressMode,
-		IPv6RAMode:      filter.IPv6RAMode,
-		ID:              filter.ID,
-		SubnetPoolID:    filter.SubnetPoolID,
-		Tags:            filter.Tags,
-		TagsAny:         filter.TagsAny,
-		NotTags:         filter.NotTags,
-		NotTagsAny:      filter.NotTagsAny,
-	}
-	subnets, err := networkService.GetSubnetsByFilter(listOpts)
-	if err != nil {
-		return "", err
-	}
-
-	if len(subnets) != 1 {
-		return "", fmt.Errorf("subnet query must return only 1 subnet")
-	}
-	return subnets[0].NetworkID, nil
-}
-
 // Converts NetworkParams to capov1 portOpts
-func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ingressVIPs []string, trunk *bool, networkService subnetsGetter, ignoreAddressPairs bool) ([]capov1.PortOpts, error) {
+func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ingressVIPs []string, trunk *bool, ignoreAddressPairs bool) []capov1.PortOpts {
 	ports := []capov1.PortOpts{}
 
 	addressPairs := []capov1.AddressPair{}
@@ -182,7 +147,7 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 		ports = append(ports, port)
 	}
 
-	return ports, nil
+	return ports
 }
 
 func extractDefaultTags(machine *machinev1beta1.Machine) []string {
@@ -266,7 +231,7 @@ func portProfileToCapov1BindingProfile(portProfile map[string]string) capov1.Bin
 	return bindingProfile
 }
 
-func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, networkService subnetsGetter, instanceService instanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
+func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, instanceService instanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
 	ps, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return nil, err
@@ -285,7 +250,7 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 		FailureDomain:  ps.AvailabilityZone,
 		ServerGroupID:  ps.ServerGroupID,
 		Trunk:          ps.Trunk,
-		Ports:          make([]capov1.PortOpts, 0, len(ps.Ports)+len(ps.Networks)),
+		Ports:          createCAPOPorts(ps, apiVIPs, ingressVIPs, ignoreAddressPairs),
 		SecurityGroups: securityGroupParamToCapov1SecurityGroupFilter(ps.SecurityGroups),
 	}
 
@@ -340,14 +305,18 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 		}
 	}
 
+	return &instanceSpec, nil
+}
+
+// func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, networkService subnetsGetter, instanceService instanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
+func createCAPOPorts(ps *machinev1alpha1.OpenstackProviderSpec, apiVIPs, ingressVIPs []string, ignoreAddressPairs bool) []capov1.PortOpts {
+	capoPorts := make([]capov1.PortOpts, 0, len(ps.Networks)+len(ps.Ports))
+
 	// The order of the networks is important, first network is the one that will be used for kubelet when
-	// the legacy cloud provider is used. Once we switch to using CCM by default, the order won't matter.
+	// the legacy cloud provider is used.
 	for _, network := range ps.Networks {
-		ports, err := networkParamToCapov1PortOpt(&network, apiVIPs, ingressVIPs, &ps.Trunk, networkService, ignoreAddressPairs)
-		if err != nil {
-			return nil, err
-		}
-		instanceSpec.Ports = append(instanceSpec.Ports, ports...)
+		ports := networkParamToCapov1PortOpt(&network, apiVIPs, ingressVIPs, &ps.Trunk, ignoreAddressPairs)
+		capoPorts = append(capoPorts, ports...)
 	}
 
 	for _, port := range ps.Ports {
@@ -388,10 +357,10 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 			}
 		}
 
-		instanceSpec.Ports = append(instanceSpec.Ports, capoPort)
+		capoPorts = append(capoPorts, capoPort)
 	}
 
-	return &instanceSpec, nil
+	return capoPorts
 }
 
 // coalesce returns the first value that is not the empty string, or the empty
