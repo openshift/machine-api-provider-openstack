@@ -308,7 +308,6 @@ func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs
 	return &instanceSpec, nil
 }
 
-// func MachineToInstanceSpec(machine *machinev1beta1.Machine, apiVIPs, ingressVIPs []string, userData string, networkService subnetsGetter, instanceService instanceService, ignoreAddressPairs bool) (*compute.InstanceSpec, error) {
 func createCAPOPorts(ps *machinev1alpha1.OpenstackProviderSpec, apiVIPs, ingressVIPs []string, ignoreAddressPairs bool) []capov1.PortOpts {
 	capoPorts := make([]capov1.PortOpts, 0, len(ps.Networks)+len(ps.Ports))
 
