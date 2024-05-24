@@ -379,7 +379,7 @@ func setMachineAnnotations(machine *machinev1.Machine, instanceStatus *compute.I
 	// instance-status was previously used to determine if the object had
 	// been changed. It is no longer used.
 	if _, ok := machine.Annotations[InstanceStatusAnnotationKey]; ok {
-		klog.Info("Machine %s: Removed legacy instance-status annotation", machine.Name)
+		klog.Infof("Machine %s: Removed legacy instance-status annotation", machine.Name)
 		delete(machine.Annotations, InstanceStatusAnnotationKey)
 	}
 
