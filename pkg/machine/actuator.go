@@ -142,7 +142,7 @@ func (oc *OpenstackClient) convertMachineToCapoInstanceSpec(scope scope.Scope, m
 
 	userDataRendered, err := oc.getUserData(machine, machineSpec, oc.params.KubeClient)
 	if err != nil {
-		return nil, maoMachine.InvalidMachineConfiguration("error creating bootstrap for %s: %v", machine.Name, err)
+		return nil, fmt.Errorf("error getting bootstrap for %s: %v", machine.Name, err)
 	}
 
 	var ignoreAddressPairs bool = false
