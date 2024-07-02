@@ -17,7 +17,7 @@ require (
 	k8s.io/client-go v0.28.3
 	k8s.io/cluster-bootstrap v0.27.2
 	k8s.io/klog/v2 v2.100.1
-	sigs.k8s.io/cluster-api-provider-openstack v0.6.3
+	sigs.k8s.io/cluster-api-provider-openstack v0.8.0
 	sigs.k8s.io/controller-runtime v0.16.3
 	sigs.k8s.io/yaml v1.3.0
 )
@@ -120,5 +120,5 @@ require (
 replace (
 	github.com/elazarl/goproxy => github.com/elazarl/goproxy v0.0.0-20230731152917-f99041a5c027
 	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.5.2
-	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.8.0-beta.0.0.20231030165925-6fdfd82f7ad4
+	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.8.0-beta.0.0.20240205103940-d1de8c63ee93
 )
