@@ -34,6 +34,7 @@ import (
 	maoMachine "github.com/openshift/machine-api-operator/pkg/controller/machine"
 	"github.com/openshift/machine-api-operator/pkg/metrics"
 	"k8s.io/client-go/kubernetes"
+	k8sflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -95,6 +96,9 @@ func main() {
 		false,
 		"Show current version",
 	)
+
+	featureGateArgs := map[string]bool{}
+	flag.Var(k8sflag.NewMapStringBool(&featureGateArgs), "feature-gates", "A set of key=value pairs that describe feature gates for alpha/experimental features.")
 
 	klog.InitFlags(nil)
 	flag.Parse()
