@@ -14,10 +14,11 @@ require (
 	github.com/openshift/api v0.0.0-20240521185306-0314f31e7774
 	github.com/openshift/client-go v0.0.0-20230926161409-848405da69e1
 	github.com/openshift/machine-api-operator v0.2.1-0.20231017175643-14a78838d36d
-	k8s.io/api v0.30.1
-	k8s.io/apimachinery v0.30.1
-	k8s.io/client-go v0.29.5
+	k8s.io/api v0.30.2
+	k8s.io/apimachinery v0.30.2
+	k8s.io/client-go v0.30.2
 	k8s.io/cluster-bootstrap v0.30.1
+	k8s.io/component-base v0.30.2
 	k8s.io/klog/v2 v2.120.1
 	sigs.k8s.io/cluster-api-provider-openstack v0.9.1
 	sigs.k8s.io/controller-runtime v0.17.5
@@ -108,7 +109,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiextensions-apiserver v0.29.5 // indirect
 	k8s.io/cli-runtime v0.29.5 // indirect
-	k8s.io/component-base v0.29.5 // indirect
 	k8s.io/kube-openapi v0.0.0-20240521193020-835d969ad83a // indirect
 	k8s.io/kubectl v0.29.5 // indirect
 	k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0 // indirect
