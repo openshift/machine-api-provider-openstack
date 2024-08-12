@@ -2,8 +2,6 @@ module github.com/openshift/machine-api-provider-openstack
 
 go 1.22.0
 
-toolchain go1.22.3
-
 require (
 	github.com/coreos/container-linux-config-transpiler v0.9.0
 	github.com/go-logr/logr v1.4.2
@@ -11,16 +9,17 @@ require (
 	github.com/gophercloud/utils v0.0.0-20231010081019-80377eca5d56
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.33.1
-	github.com/openshift/api v0.0.0-20240521185306-0314f31e7774
-	github.com/openshift/client-go v0.0.0-20230926161409-848405da69e1
-	github.com/openshift/machine-api-operator v0.2.1-0.20231017175643-14a78838d36d
-	k8s.io/api v0.30.1
-	k8s.io/apimachinery v0.30.1
-	k8s.io/client-go v0.29.5
+	github.com/openshift/api v0.0.0-20240708071937-c9a91940bf0f
+	github.com/openshift/client-go v0.0.0-20240528061634-b054aa794d87
+	github.com/openshift/machine-api-operator v0.2.1-0.20240708094115-80301b13a9d2
+	k8s.io/api v0.30.2
+	k8s.io/apimachinery v0.30.2
+	k8s.io/client-go v0.30.2
 	k8s.io/cluster-bootstrap v0.30.1
+	k8s.io/component-base v0.30.2
 	k8s.io/klog/v2 v2.120.1
 	sigs.k8s.io/cluster-api-provider-openstack v0.9.1
-	sigs.k8s.io/controller-runtime v0.17.5
+	sigs.k8s.io/controller-runtime v0.18.3
 	sigs.k8s.io/yaml v1.4.0
 )
 
@@ -76,7 +75,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
-	github.com/openshift/library-go v0.0.0-20230927113136-405c34317fa4 // indirect
+	github.com/openshift/library-go v0.0.0-20240116081341-964bcb3f545c // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.19.1 // indirect
@@ -86,7 +85,6 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/spf13/cobra v1.8.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/vincent-petithory/dataurl v1.0.0 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
 	go.starlark.net v0.0.0-20240520160348-046347dcd104 // indirect
@@ -106,11 +104,10 @@ require (
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.29.5 // indirect
-	k8s.io/cli-runtime v0.29.5 // indirect
-	k8s.io/component-base v0.29.5 // indirect
+	k8s.io/apiextensions-apiserver v0.30.1 // indirect
+	k8s.io/cli-runtime v0.30.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20240521193020-835d969ad83a // indirect
-	k8s.io/kubectl v0.29.5 // indirect
+	k8s.io/kubectl v0.30.0 // indirect
 	k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0 // indirect
 	sigs.k8s.io/cluster-api v1.7.2 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
