@@ -11,9 +11,11 @@ require (
 	github.com/onsi/gomega v1.33.1
 	github.com/openshift/api v0.0.0-20240731195412-e863d9f8a215
 	github.com/openshift/client-go v0.0.0-20240528061634-b054aa794d87
+	github.com/openshift/library-go v0.0.0-20240822162747-42bcbbc4ccc6
 	github.com/openshift/machine-api-operator v0.2.1-0.20240820150322-d0e62ca300b5
 	k8s.io/api v0.30.2
 	k8s.io/apimachinery v0.30.2
+	k8s.io/apiserver v0.30.1
 	k8s.io/client-go v0.30.2
 	k8s.io/cluster-bootstrap v0.30.1
 	k8s.io/component-base v0.30.2
@@ -75,7 +77,6 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
-	github.com/openshift/library-go v0.0.0-20240723172506-8bb8fe6cc56d // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.19.1 // indirect
