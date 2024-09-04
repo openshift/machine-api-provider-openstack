@@ -17,7 +17,7 @@ require (
 	k8s.io/client-go v0.28.4
 	k8s.io/cluster-bootstrap v0.28.4
 	k8s.io/klog/v2 v2.100.1
-	sigs.k8s.io/cluster-api-provider-openstack v0.9.1
+	sigs.k8s.io/cluster-api-provider-openstack v0.9.2
 	sigs.k8s.io/controller-runtime v0.16.3
 	sigs.k8s.io/yaml v1.4.0
 )
