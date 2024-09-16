@@ -9,10 +9,10 @@ require (
 	github.com/gophercloud/utils v0.0.0-20231010081019-80377eca5d56
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.33.1
-	github.com/openshift/api v0.0.0-20240731195412-e863d9f8a215
-	github.com/openshift/client-go v0.0.0-20240528061634-b054aa794d87
-	github.com/openshift/library-go v0.0.0-20240822162747-42bcbbc4ccc6
-	github.com/openshift/machine-api-operator v0.2.1-0.20240820150322-d0e62ca300b5
+	github.com/openshift/api v0.0.0-20240904015708-69df64132c91
+	github.com/openshift/client-go v0.0.0-20240904134955-cd42fd3d7408
+	github.com/openshift/library-go v0.0.0-20240903143724-7c5c5d305ac1
+	github.com/openshift/machine-api-operator v0.2.1-0.20240912100427-050b12eb6e05
 	k8s.io/api v0.30.2
 	k8s.io/apimachinery v0.30.2
 	k8s.io/apiserver v0.30.1
@@ -21,7 +21,7 @@ require (
 	k8s.io/component-base v0.30.2
 	k8s.io/klog/v2 v2.120.1
 	sigs.k8s.io/cluster-api-provider-openstack v0.9.1
-	sigs.k8s.io/controller-runtime v0.18.3
+	sigs.k8s.io/controller-runtime v0.18.4
 	sigs.k8s.io/yaml v1.4.0
 )
 
@@ -83,6 +83,7 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.53.0 // indirect
 	github.com/prometheus/procfs v0.15.0 // indirect
+	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/spf13/cobra v1.8.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
