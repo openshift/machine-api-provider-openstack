@@ -5,7 +5,7 @@ go 1.22.0
 require (
 	github.com/coreos/container-linux-config-transpiler v0.9.0
 	github.com/go-logr/logr v1.4.2
-	github.com/gophercloud/gophercloud v1.11.0
+	github.com/gophercloud/gophercloud v1.14.1
 	github.com/gophercloud/utils v0.0.0-20231010081019-80377eca5d56
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.33.1
