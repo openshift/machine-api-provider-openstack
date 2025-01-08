@@ -18,8 +18,8 @@ type instanceService interface {
 	CreateServerGroup(name string) (*servergroups.ServerGroup, error)
 }
 
-// Converts NetworkParams to capov1 portOpts
-func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ingressVIPs []string, trunk *bool, ignoreAddressPairs bool) []capov1.PortOpts {
+// networkParamToCapov1PortOpts Converts a MAPO NetworkParams to an array of CAPO PortOpts
+func networkParamToCapov1PortOpts(net *machinev1alpha1.NetworkParam, apiVIPs, ingressVIPs []string, trunk *bool, ignoreAddressPairs bool) []capov1.PortOpts {
 	ports := []capov1.PortOpts{}
 
 	addressPairs := []capov1.AddressPair{}
@@ -148,6 +148,48 @@ func networkParamToCapov1PortOpt(net *machinev1alpha1.NetworkParam, apiVIPs, ing
 	}
 
 	return ports
+}
+
+// portOptsToCapov1PortOpts converts a MAPO PortOpts to a CAPO PortOpts
+func portOptsToCapov1PortOpts(port *machinev1alpha1.PortOpts, ignoreAddressPairs bool) capov1.PortOpts {
+	var portSecurityGroupParams []machinev1alpha1.SecurityGroupParam
+	if port.SecurityGroups != nil {
+		portSecurityGroupParams = securityGroupsToSecurityGroupParams(*port.SecurityGroups)
+	}
+	disablePortSecurity := port.PortSecurity
+	if disablePortSecurity != nil {
+		ps := !*disablePortSecurity
+		disablePortSecurity = &ps
+	}
+	capoPort := capov1.PortOpts{
+		AdminStateUp:         port.AdminStateUp,
+		Description:          port.Description,
+		DisablePortSecurity:  disablePortSecurity,
+		FixedIPs:             make([]capov1.FixedIP, len(port.FixedIPs)),
+		MACAddress:           port.MACAddress,
+		NameSuffix:           port.NameSuffix,
+		Network:              &capov1.NetworkFilter{ID: port.NetworkID},
+		Profile:              portProfileToCapov1BindingProfile(port.Profile),
+		SecurityGroupFilters: securityGroupParamToCapov1SecurityGroupFilter(portSecurityGroupParams),
+		Trunk:                port.Trunk,
+		VNICType:             port.VNICType,
+	}
+
+	if !ignoreAddressPairs {
+		capoPort.AllowedAddressPairs = make([]capov1.AddressPair, len(port.AllowedAddressPairs))
+		for addrPairIndex, addrPair := range port.AllowedAddressPairs {
+			capoPort.AllowedAddressPairs[addrPairIndex] = capov1.AddressPair(addrPair)
+		}
+	}
+
+	for fixedIPindex, fixedIP := range port.FixedIPs {
+		capoPort.FixedIPs[fixedIPindex] = capov1.FixedIP{
+			Subnet:    &capov1.SubnetFilter{ID: fixedIP.SubnetID},
+			IPAddress: fixedIP.IPAddress,
+		}
+	}
+
+	return capoPort
 }
 
 func extractDefaultTags(machine *machinev1beta1.Machine) []string {
@@ -314,48 +356,12 @@ func createCAPOPorts(ps *machinev1alpha1.OpenstackProviderSpec, apiVIPs, ingress
 	// The order of the networks is important, first network is the one that will be used for kubelet when
 	// the legacy cloud provider is used.
 	for _, network := range ps.Networks {
-		ports := networkParamToCapov1PortOpt(&network, apiVIPs, ingressVIPs, &ps.Trunk, ignoreAddressPairs)
+		ports := networkParamToCapov1PortOpts(&network, apiVIPs, ingressVIPs, &ps.Trunk, ignoreAddressPairs)
 		capoPorts = append(capoPorts, ports...)
 	}
 
 	for _, port := range ps.Ports {
-		var portSecurityGroupParams []machinev1alpha1.SecurityGroupParam
-		if port.SecurityGroups != nil {
-			portSecurityGroupParams = securityGroupsToSecurityGroupParams(*port.SecurityGroups)
-		}
-		disablePortSecurity := port.PortSecurity
-		if disablePortSecurity != nil {
-			ps := !*disablePortSecurity
-			disablePortSecurity = &ps
-		}
-		capoPort := capov1.PortOpts{
-			Network:              &capov1.NetworkFilter{ID: port.NetworkID},
-			NameSuffix:           port.NameSuffix,
-			Description:          port.Description,
-			AdminStateUp:         port.AdminStateUp,
-			MACAddress:           port.MACAddress,
-			DisablePortSecurity:  disablePortSecurity,
-			FixedIPs:             make([]capov1.FixedIP, len(port.FixedIPs)),
-			SecurityGroupFilters: securityGroupParamToCapov1SecurityGroupFilter(portSecurityGroupParams),
-			VNICType:             port.VNICType,
-			Profile:              portProfileToCapov1BindingProfile(port.Profile),
-			Trunk:                port.Trunk,
-		}
-
-		if !ignoreAddressPairs {
-			capoPort.AllowedAddressPairs = make([]capov1.AddressPair, len(port.AllowedAddressPairs))
-			for addrPairIndex, addrPair := range port.AllowedAddressPairs {
-				capoPort.AllowedAddressPairs[addrPairIndex] = capov1.AddressPair(addrPair)
-			}
-		}
-
-		for fixedIPindex, fixedIP := range port.FixedIPs {
-			capoPort.FixedIPs[fixedIPindex] = capov1.FixedIP{
-				Subnet:    &capov1.SubnetFilter{ID: fixedIP.SubnetID},
-				IPAddress: fixedIP.IPAddress,
-			}
-		}
-
+		capoPort := portOptsToCapov1PortOpts(&port, ignoreAddressPairs)
 		capoPorts = append(capoPorts, capoPort)
 	}
 

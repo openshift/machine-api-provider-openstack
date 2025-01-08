@@ -10,6 +10,7 @@ import (
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 )
@@ -381,7 +382,7 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			portOpts := networkParamToCapov1PortOpt(
+			portOpts := networkParamToCapov1PortOpts(
 				tc.networkParam,
 				nil,
 				nil,
@@ -390,6 +391,52 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 			)
 			for _, check := range tc.check {
 				check(t, portOpts)
+			}
+		})
+	}
+}
+
+func TestPortOptsToCapov1PortOpts(t *testing.T) {
+	tests := []struct {
+		name               string
+		input              machinev1alpha1.PortOpts
+		ignoreAddressPairs bool
+		expected           capov1.PortOpts
+	}{
+		{
+			name: "minimal port opts",
+			input: machinev1alpha1.PortOpts{
+				FixedIPs:       nil,
+				NetworkID:      "c3127c12-fd96-4ab5-a4e0-dc4a69634f3b",
+				PortSecurity:   ptr.To(true),
+				Profile:        map[string]string{},
+				SecurityGroups: nil,
+				Tags:           []string{"foo", "bar"},
+				Trunk:          ptr.To(false),
+			},
+			ignoreAddressPairs: true,
+			expected: capov1.PortOpts{
+				AdminStateUp:         nil,
+				Description:          "",
+				DisablePortSecurity:  ptr.To(false),
+				FixedIPs:             []capov1.FixedIP{},
+				MACAddress:           "",
+				NameSuffix:           "",
+				Network:              &capov1.NetworkFilter{ID: "c3127c12-fd96-4ab5-a4e0-dc4a69634f3b"},
+				Profile:              capov1.BindingProfile{},
+				SecurityGroupFilters: []capov1.SecurityGroupFilter{},
+				// OCPBUGS-48288: We should be setting tags
+				// Tags:                 []string{"foo", "bar"},
+				Trunk:    ptr.To(false),
+				VNICType: "",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if actual := portOptsToCapov1PortOpts(&tt.input, tt.ignoreAddressPairs); !reflect.DeepEqual(actual, tt.expected) {
+				t.Errorf("portOptsToCapov1PortOpts() = %v, want %v", actual, tt.expected)
 			}
 		})
 	}
