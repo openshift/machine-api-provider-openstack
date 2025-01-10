@@ -171,6 +171,7 @@ func portOptsToCapov1PortOpts(port *machinev1alpha1.PortOpts, ignoreAddressPairs
 		Network:              &capov1.NetworkFilter{ID: port.NetworkID},
 		Profile:              portProfileToCapov1BindingProfile(port.Profile),
 		SecurityGroupFilters: securityGroupParamToCapov1SecurityGroupFilter(portSecurityGroupParams),
+		Tags:                 port.Tags,
 		Trunk:                port.Trunk,
 		VNICType:             port.VNICType,
 	}

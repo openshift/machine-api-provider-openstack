@@ -425,10 +425,9 @@ func TestPortOptsToCapov1PortOpts(t *testing.T) {
 				Network:              &capov1.NetworkFilter{ID: "c3127c12-fd96-4ab5-a4e0-dc4a69634f3b"},
 				Profile:              capov1.BindingProfile{},
 				SecurityGroupFilters: []capov1.SecurityGroupFilter{},
-				// OCPBUGS-48288: We should be setting tags
-				// Tags:                 []string{"foo", "bar"},
-				Trunk:    ptr.To(false),
-				VNICType: "",
+				Tags:                 []string{"foo", "bar"},
+				Trunk:                ptr.To(false),
+				VNICType:             "",
 			},
 		},
 	}
