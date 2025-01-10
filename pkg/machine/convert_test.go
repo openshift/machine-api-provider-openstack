@@ -183,6 +183,14 @@ func TestSecurityGroupParamToCapov1SecurityGroupFilter(t *testing.T) {
 		}
 	}
 
+	hasProjectID := func(want string) securityGroupFilterCheckFunc {
+		return func(t *testing.T, securityGroupFilter capov1.SecurityGroupFilter) {
+			if have := securityGroupFilter.ProjectID; want != have {
+				t.Errorf("expected securityGroupFilter to have project ID %q, found %q", want, have)
+			}
+		}
+	}
+
 	for _, tc := range [...]struct {
 		name                string
 		securityGroupParams []machinev1alpha1.SecurityGroupParam
@@ -218,6 +226,28 @@ func TestSecurityGroupParamToCapov1SecurityGroupFilter(t *testing.T) {
 				securityGroupFilter(0, hasSecurityGroupUUID("c0f694ff-aabf-479f-8fa2-589696c03715")),
 				securityGroupFilter(1, hasSecurityGroupUUID("c0f694ff-aabf-479f-8fa2-589696c03716")),
 				securityGroupFilter(2, hasSecurityGroupUUID("c0f694ff-aabf-479f-8fa2-589696c03717")),
+			),
+		},
+		{
+			name: "securityGroupParam with legacy tenantID params",
+			securityGroupParams: []machinev1alpha1.SecurityGroupParam{
+				{
+					UUID: "c0f694ff-aabf-479f-8fa2-589696c03715",
+					Filter: machinev1alpha1.SecurityGroupFilter{
+						TenantID: "c9cf6e858743443387730c0d53f82407",
+					},
+				},
+				{
+					UUID: "c0f694ff-aabf-479f-8fa2-589696c03716",
+					Filter: machinev1alpha1.SecurityGroupFilter{
+						ProjectID: "832fbb3cc73d4be894d468ef2ef75a4f",
+					},
+				},
+			},
+			check: that(
+				hasSecurityGroupFilters(2),
+				securityGroupFilter(0, hasProjectID("c9cf6e858743443387730c0d53f82407")),
+				securityGroupFilter(1, hasProjectID("832fbb3cc73d4be894d468ef2ef75a4f")),
 			),
 		},
 	} {

@@ -231,7 +231,7 @@ func securityGroupParamToCapov1SecurityGroupFilter(psSecurityGroups []machinev1a
 			ID:          secGrp.Filter.ID,
 			Name:        secGrp.Filter.Name,
 			Description: secGrp.Filter.Description,
-			ProjectID:   secGrp.Filter.ProjectID,
+			ProjectID:   coalesce(secGrp.Filter.ProjectID, secGrp.Filter.TenantID),
 			Tags:        secGrp.Filter.Tags,
 			TagsAny:     secGrp.Filter.TagsAny,
 			NotTags:     secGrp.Filter.NotTags,
