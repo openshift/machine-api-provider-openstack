@@ -10,6 +10,7 @@ import (
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 )
@@ -182,6 +183,14 @@ func TestSecurityGroupParamToCapov1SecurityGroupFilter(t *testing.T) {
 		}
 	}
 
+	hasProjectID := func(want string) securityGroupFilterCheckFunc {
+		return func(t *testing.T, securityGroupFilter capov1.SecurityGroupFilter) {
+			if have := securityGroupFilter.ProjectID; want != have {
+				t.Errorf("expected securityGroupFilter to have project ID %q, found %q", want, have)
+			}
+		}
+	}
+
 	for _, tc := range [...]struct {
 		name                string
 		securityGroupParams []machinev1alpha1.SecurityGroupParam
@@ -217,6 +226,28 @@ func TestSecurityGroupParamToCapov1SecurityGroupFilter(t *testing.T) {
 				securityGroupFilter(0, hasSecurityGroupUUID("c0f694ff-aabf-479f-8fa2-589696c03715")),
 				securityGroupFilter(1, hasSecurityGroupUUID("c0f694ff-aabf-479f-8fa2-589696c03716")),
 				securityGroupFilter(2, hasSecurityGroupUUID("c0f694ff-aabf-479f-8fa2-589696c03717")),
+			),
+		},
+		{
+			name: "securityGroupParam with legacy tenantID params",
+			securityGroupParams: []machinev1alpha1.SecurityGroupParam{
+				{
+					UUID: "c0f694ff-aabf-479f-8fa2-589696c03715",
+					Filter: machinev1alpha1.SecurityGroupFilter{
+						TenantID: "c9cf6e858743443387730c0d53f82407",
+					},
+				},
+				{
+					UUID: "c0f694ff-aabf-479f-8fa2-589696c03716",
+					Filter: machinev1alpha1.SecurityGroupFilter{
+						ProjectID: "832fbb3cc73d4be894d468ef2ef75a4f",
+					},
+				},
+			},
+			check: that(
+				hasSecurityGroupFilters(2),
+				securityGroupFilter(0, hasProjectID("c9cf6e858743443387730c0d53f82407")),
+				securityGroupFilter(1, hasProjectID("832fbb3cc73d4be894d468ef2ef75a4f")),
 			),
 		},
 	} {
@@ -381,7 +412,7 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			portOpts := networkParamToCapov1PortOpt(
+			portOpts := networkParamToCapov1PortOpts(
 				tc.networkParam,
 				nil,
 				nil,
@@ -390,6 +421,51 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 			)
 			for _, check := range tc.check {
 				check(t, portOpts)
+			}
+		})
+	}
+}
+
+func TestPortOptsToCapov1PortOpts(t *testing.T) {
+	tests := []struct {
+		name               string
+		input              machinev1alpha1.PortOpts
+		ignoreAddressPairs bool
+		expected           capov1.PortOpts
+	}{
+		{
+			name: "minimal port opts",
+			input: machinev1alpha1.PortOpts{
+				FixedIPs:       nil,
+				NetworkID:      "c3127c12-fd96-4ab5-a4e0-dc4a69634f3b",
+				PortSecurity:   ptr.To(true),
+				Profile:        map[string]string{},
+				SecurityGroups: nil,
+				Tags:           []string{"foo", "bar"},
+				Trunk:          ptr.To(false),
+			},
+			ignoreAddressPairs: true,
+			expected: capov1.PortOpts{
+				AdminStateUp:         nil,
+				Description:          "",
+				DisablePortSecurity:  ptr.To(false),
+				FixedIPs:             []capov1.FixedIP{},
+				MACAddress:           "",
+				NameSuffix:           "",
+				Network:              &capov1.NetworkFilter{ID: "c3127c12-fd96-4ab5-a4e0-dc4a69634f3b"},
+				Profile:              capov1.BindingProfile{},
+				SecurityGroupFilters: []capov1.SecurityGroupFilter{},
+				Tags:                 []string{"foo", "bar"},
+				Trunk:                ptr.To(false),
+				VNICType:             "",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if actual := portOptsToCapov1PortOpts(&tt.input, tt.ignoreAddressPairs); !reflect.DeepEqual(actual, tt.expected) {
+				t.Errorf("portOptsToCapov1PortOpts() = %v, want %v", actual, tt.expected)
 			}
 		})
 	}

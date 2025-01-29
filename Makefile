@@ -37,6 +37,9 @@ check-vendor:
 fmt:
 	hack/verify-gofmt.sh
 
+update:
+	hack/update-gofmt.sh
+
 lint:
 ifndef HAS_LINT
 		go get -u golang.org/x/lint/golint

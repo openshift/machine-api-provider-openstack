@@ -20,6 +20,7 @@ require (
 	k8s.io/cluster-bootstrap v0.30.1
 	k8s.io/component-base v0.30.2
 	k8s.io/klog/v2 v2.120.1
+	k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0
 	sigs.k8s.io/cluster-api-provider-openstack v0.9.1
 	sigs.k8s.io/controller-runtime v0.18.4
 	sigs.k8s.io/yaml v1.4.0
@@ -110,7 +111,6 @@ require (
 	k8s.io/cli-runtime v0.30.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20240521193020-835d969ad83a // indirect
 	k8s.io/kubectl v0.30.0 // indirect
-	k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0 // indirect
 	sigs.k8s.io/cluster-api v1.7.2 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/kustomize/api v0.17.2 // indirect
