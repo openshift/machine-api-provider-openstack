@@ -126,7 +126,18 @@ func getCloudFromSecret(kubeClient kubernetes.Interface, namespace string, secre
 		return emptyCloud, nil, fmt.Errorf("failed to unmarshal clouds credentials stored in secret %v: %v", secretName, err)
 	}
 
-	cacert := getCACertificate(kubeClient)
+	var cacert []byte
+	content, ok = secret.Data["cacert"]
+	if ok {
+		cacert = []byte(content)
+	} else {
+		// Fallback for retrieving CA cert from the CCM config. Starting in
+		// OCP 4.19, cloud-credential-operator provides this in the credential
+		// secret, as seen above, so this is no longer necessary outside of
+		// upgrade scenarios.
+		// TODO(stephenfin): Remove in 4.20
+		cacert = getCACertFromConfig(kubeClient)
+	}
 
 	return clouds.Clouds[cloudName], cacert, nil
 }
