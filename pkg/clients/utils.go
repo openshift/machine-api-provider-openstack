@@ -20,10 +20,6 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-const (
-	CloudsSecretKey = "clouds.yaml"
-)
-
 // GetCloud fetches cloud credentials from a secret and return a parsed Cloud structure
 func GetCloud(kubeClient kubernetes.Interface, machine *machinev1.Machine) (clientconfig.Cloud, error) {
 	cloud := clientconfig.Cloud{}
@@ -132,13 +128,12 @@ func GetCloudFromSecret(kubeClient kubernetes.Interface, namespace string, secre
 
 	secret, err := kubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 	if err != nil {
-		return emptyCloud, fmt.Errorf("Failed to get secrets from kubernetes api: %v", err)
+		return emptyCloud, fmt.Errorf("Failed to get secrets %s/%s from kubernetes api: %v", namespace, secretName, err)
 	}
 
-	content, ok := secret.Data[CloudsSecretKey]
+	content, ok := secret.Data["clouds.yaml"]
 	if !ok {
-		return emptyCloud, fmt.Errorf("OpenStack credentials secret %v did not contain key %v",
-			secretName, CloudsSecretKey)
+		return emptyCloud, fmt.Errorf("OpenStack credentials secret %v did not contain key %v", secretName, "clouds.yaml")
 	}
 	var clouds clientconfig.Clouds
 	err = yaml.Unmarshal(content, &clouds)
