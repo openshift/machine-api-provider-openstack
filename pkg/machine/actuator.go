@@ -82,12 +82,12 @@ func NewActuator(params ActuatorParams) (*OpenstackClient, error) {
 func (oc *OpenstackClient) getScope(ctx context.Context, machine *machinev1.Machine) (scope.Scope, string, error) {
 	log := ctrl.LoggerFrom(ctx)
 	log = log.WithValues("machine", machine.Name)
-	cloud, err := clients.GetCloud(oc.params.KubeClient, machine)
+	cloud, cacert, err := clients.GetCloud(oc.params.KubeClient, machine)
 	if err != nil {
 		return nil, "", err
 	}
 	regionName := cloud.RegionName
-	scope, err := scope.NewProviderScope(cloud, clients.GetCACertificate(oc.params.KubeClient), log)
+	scope, err := scope.NewProviderScope(cloud, cacert, log)
 	return scope, regionName, err
 }
 

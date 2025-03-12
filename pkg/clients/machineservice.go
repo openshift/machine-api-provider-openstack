@@ -39,12 +39,12 @@ type InstanceService struct {
 
 // TODO: Eventually we'll have a NewInstanceServiceFromCluster too
 func NewInstanceServiceFromMachine(kubeClient kubernetes.Interface, machine *machinev1.Machine) (*InstanceService, error) {
-	cloud, err := GetCloud(kubeClient, machine)
+	cloud, cacert, err := GetCloud(kubeClient, machine)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewInstanceServiceFromCloud(cloud, GetCACertificate(kubeClient))
+	return NewInstanceServiceFromCloud(cloud, cacert)
 }
 
 func NewInstanceService() (*InstanceService, error) {
