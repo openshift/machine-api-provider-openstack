@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,46 +19,44 @@ package admission
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 
 	admissionv1 "k8s.io/api/admission/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// CustomDefaulter defines functions for setting defaults on resources.
-type CustomDefaulter interface {
-	Default(ctx context.Context, obj runtime.Object) error
+// Defaulter defines functions for setting defaults on resources.
+// Deprecated: Ue CustomDefaulter instead.
+type Defaulter interface {
+	runtime.Object
+	Default()
 }
 
-// WithCustomDefaulter creates a new Webhook for a CustomDefaulter interface.
-func WithCustomDefaulter(scheme *runtime.Scheme, obj runtime.Object, defaulter CustomDefaulter) *Webhook {
+// DefaultingWebhookFor creates a new Webhook for Defaulting the provided type.
+// Deprecated: Use WithCustomDefaulter instead.
+func DefaultingWebhookFor(scheme *runtime.Scheme, defaulter Defaulter) *Webhook {
 	return &Webhook{
-		Handler: &defaulterForType{object: obj, defaulter: defaulter, decoder: NewDecoder(scheme)},
+		Handler: &mutatingHandler{defaulter: defaulter, decoder: NewDecoder(scheme)},
 	}
 }
 
-type defaulterForType struct {
-	defaulter CustomDefaulter
-	object    runtime.Object
+type mutatingHandler struct {
+	defaulter Defaulter
 	decoder   Decoder
 }
 
 // Handle handles admission requests.
-func (h *defaulterForType) Handle(ctx context.Context, req Request) Response {
+func (h *mutatingHandler) Handle(ctx context.Context, req Request) Response {
 	if h.decoder == nil {
 		panic("decoder should never be nil")
 	}
 	if h.defaulter == nil {
 		panic("defaulter should never be nil")
 	}
-	if h.object == nil {
-		panic("object should never be nil")
-	}
 
-	// Always skip when a DELETE operation received in custom mutation handler.
+	// always skip when a DELETE operation received in mutation handler
+	// describe in https://github.com/kubernetes-sigs/controller-runtime/issues/1762
 	if req.Operation == admissionv1.Delete {
 		return Response{AdmissionResponse: admissionv1.AdmissionResponse{
 			Allowed: true,
@@ -68,27 +66,19 @@ func (h *defaulterForType) Handle(ctx context.Context, req Request) Response {
 		}}
 	}
 
-	ctx = NewContextWithRequest(ctx, req)
-
 	// Get the object in the request
-	obj := h.object.DeepCopyObject()
+	obj := h.defaulter.DeepCopyObject().(Defaulter)
 	if err := h.decoder.Decode(req, obj); err != nil {
 		return Errored(http.StatusBadRequest, err)
 	}
 
 	// Default the object
-	if err := h.defaulter.Default(ctx, obj); err != nil {
-		var apiStatus apierrors.APIStatus
-		if errors.As(err, &apiStatus) {
-			return validationResponseFromStatus(false, apiStatus.Status())
-		}
-		return Denied(err.Error())
-	}
-
-	// Create the patch
+	obj.Default()
 	marshalled, err := json.Marshal(obj)
 	if err != nil {
 		return Errored(http.StatusInternalServerError, err)
 	}
+
+	// Create the patch
 	return PatchResponseFromRaw(req.Object.Raw, marshalled)
 }
