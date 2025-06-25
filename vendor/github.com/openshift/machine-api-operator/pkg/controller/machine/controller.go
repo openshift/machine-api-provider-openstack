@@ -122,11 +122,6 @@ func newReconciler(mgr manager.Manager, actuator Actuator, gate featuregate.Muta
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
-func add(mgr manager.Manager, r reconcile.Reconciler, controllerName string) error {
-	return addWithOpts(mgr, controller.Options{Reconciler: r}, controllerName)
-}
-
-// add adds a new Controller to mgr with r as the reconcile.Reconciler
 func addWithOpts(mgr manager.Manager, opts controller.Options, controllerName string) error {
 	// Create a new controller
 	c, err := controller.New(controllerName, mgr, opts)
@@ -192,7 +187,7 @@ func (r *ReconcileMachine) Reconcile(ctx context.Context, request reconcile.Requ
 			conditions.Set(m, conditions.TrueConditionWithReason(
 				PausedCondition,
 				PausedConditionReason,
-				"The AuthoritativeAPI is set to %s", m.Status.AuthoritativeAPI,
+				"The AuthoritativeAPI is set to %s", string(m.Status.AuthoritativeAPI),
 			))
 			if patchErr := r.updateStatus(ctx, m, ptr.Deref(m.Status.Phase, ""), nil, originalConditions); patchErr != nil {
 				klog.Errorf("%v: error patching status: %v", machineName, patchErr)
@@ -202,12 +197,20 @@ func (r *ReconcileMachine) Reconcile(ctx context.Context, request reconcile.Requ
 			return reconcile.Result{}, nil
 		}
 
+		var pausedFalseReason string
+		if m.Status.AuthoritativeAPI != "" {
+			pausedFalseReason = fmt.Sprintf("The AuthoritativeAPI is set to %s", string(m.Status.AuthoritativeAPI))
+		} else {
+			pausedFalseReason = "The AuthoritativeAPI is not set"
+		}
+
 		// Set the paused condition to false, continue reconciliation
 		conditions.Set(m, conditions.FalseCondition(
 			PausedCondition,
 			NotPausedConditionReason,
 			machinev1.ConditionSeverityInfo,
-			"The AuthoritativeAPI is set to %s", m.Status.AuthoritativeAPI,
+			"%s",
+			pausedFalseReason,
 		))
 		if patchErr := r.updateStatus(ctx, m, ptr.Deref(m.Status.Phase, ""), nil, originalConditions); patchErr != nil {
 			klog.Errorf("%v: error patching status: %v", machineName, patchErr)
