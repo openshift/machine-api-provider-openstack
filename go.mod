@@ -118,4 +118,10 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 )
 
-replace github.com/elazarl/goproxy => github.com/elazarl/goproxy v0.0.0-20230731152917-f99041a5c027
+replace (
+	github.com/elazarl/goproxy => github.com/elazarl/goproxy v0.0.0-20230731152917-f99041a5c027
+	// while we wait on [1] to merge
+	//
+	// [1] https://github.com/kubernetes-sigs/cluster-api-provider-openstack/pull/2612
+	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.9.1-0.20250821110354-61c49ece8d29
+)

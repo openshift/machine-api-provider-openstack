@@ -223,6 +223,8 @@ github.com/openshift/client-go v0.0.0-20240904134955-cd42fd3d7408 h1:xHOmkHjN0AF
 github.com/openshift/client-go v0.0.0-20240904134955-cd42fd3d7408/go.mod h1:D3yfotGqRY1LWaHcoSCeadhdyvfrQWYJXui1M+JqKvY=
 github.com/openshift/cluster-api-actuator-pkg/testutils v0.0.0-20240626103413-ddea9c7c0aca h1:HFFzJznFQVudyVSpMa+hZwXZpc0ZvFCIpiMNFdf21g8=
 github.com/openshift/cluster-api-actuator-pkg/testutils v0.0.0-20240626103413-ddea9c7c0aca/go.mod h1:osVq9/R6qKHBQxDP4cYTvkgXVBKOMs1SOfPLFfn0m7A=
+github.com/openshift/cluster-api-provider-openstack v0.9.1-0.20250821110354-61c49ece8d29 h1:J+oD+/HJDJWtWVtjL9K69AhuSrpEErhoRNdoLzzwxxQ=
+github.com/openshift/cluster-api-provider-openstack v0.9.1-0.20250821110354-61c49ece8d29/go.mod h1:ecR9lx4XbOr3Gg2CGNgM3wguuV6l31Nd5rUccE+xjKs=
 github.com/openshift/cluster-control-plane-machine-set-operator v0.0.0-20240909043600-373ac49835bf h1:mfMmaD9+vZIZQq3MGXsS/AGHXekj4wIn3zc1Cs1EY8M=
 github.com/openshift/cluster-control-plane-machine-set-operator v0.0.0-20240909043600-373ac49835bf/go.mod h1:2fZsjZ3QSPkoMUc8QntXfeBb8AnvW+WIYwwQX8vmgvQ=
 github.com/openshift/library-go v0.0.0-20240903143724-7c5c5d305ac1 h1:qEMLKQXdGlUiK1KC2k6QK8og38eveU2/gcNBnQAwwmk=
@@ -552,8 +554,6 @@ rsc.io/quote/v3 v3.1.0/go.mod h1:yEA65RcK8LyAZtP9Kv3t0HmxON59tX3rD+tICJqUlj0=
 rsc.io/sampler v1.3.0/go.mod h1:T1hPZKmBbMNahiBKFy5HrXp6adAjACjK9JXDnKaTXpA=
 sigs.k8s.io/cluster-api v1.7.2 h1:bRE8zoao7ajuLC0HijqfZVcubKQCPlZ04HMgcA53FGE=
 sigs.k8s.io/cluster-api v1.7.2/go.mod h1:V9ZhKLvQtsDODwjXOKgbitjyCmC71yMBwDcMyNNIov0=
-sigs.k8s.io/cluster-api-provider-openstack v0.9.1 h1:rbRJa8G7x/f9/aGrvxxIsxfDPrSJWUgaR/5BY1Ik4iE=
-sigs.k8s.io/cluster-api-provider-openstack v0.9.1/go.mod h1:ecR9lx4XbOr3Gg2CGNgM3wguuV6l31Nd5rUccE+xjKs=
 sigs.k8s.io/controller-runtime v0.18.4 h1:87+guW1zhvuPLh1PHybKdYFLU0YJp4FhJRmiHvm5BZw=
 sigs.k8s.io/controller-runtime v0.18.4/go.mod h1:TVoGrfdpbA9VRFaRnKgk9P5/atA0pMwq+f+msb9M8Sg=
 sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd h1:EDPBXCAspyGV4jQlpZSudPeMmr1bNJefnuqLsRAsHZo=
