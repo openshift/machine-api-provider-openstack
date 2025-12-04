@@ -978,7 +978,7 @@ k8s.io/utils/trace
 ## explicit; go 1.22.0
 sigs.k8s.io/cluster-api/api/v1beta1
 sigs.k8s.io/cluster-api/errors
-# sigs.k8s.io/cluster-api-provider-openstack v0.9.1 => github.com/openshift/cluster-api-provider-openstack v0.9.1-0.20250821110354-61c49ece8d29
+# sigs.k8s.io/cluster-api-provider-openstack v0.9.3-0.20251120124404-2c507cd316ab
 ## explicit; go 1.20
 sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7
 sigs.k8s.io/cluster-api-provider-openstack/pkg/clients
@@ -1142,4 +1142,3 @@ sigs.k8s.io/yaml
 sigs.k8s.io/yaml/goyaml.v2
 sigs.k8s.io/yaml/goyaml.v3
 # github.com/elazarl/goproxy => github.com/elazarl/goproxy v0.0.0-20230731152917-f99041a5c027
-# sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.9.1-0.20250821110354-61c49ece8d29
