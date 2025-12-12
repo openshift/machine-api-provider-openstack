@@ -176,6 +176,8 @@ func (oc *OpenstackClient) Update(ctx context.Context, machine *machinev1.Machin
 }
 
 func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Machine) error {
+	originalResourceVersion := machine.ResourceVersion
+
 	machineSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return maoMachine.InvalidMachineConfiguration("Cannot unmarshal providerSpec for %s: %v", machine.Name, err)
@@ -233,7 +235,10 @@ func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Mac
 		return err
 	}
 
-	oc.eventRecorder.Eventf(machine, corev1.EventTypeNormal, "Reconciled", "Reconciled machine %v", machine.Name)
+	// Only record the Updated event if the machine was actually modified
+	if machine.ResourceVersion != originalResourceVersion {
+		oc.eventRecorder.Eventf(machine, corev1.EventTypeNormal, "Updated", "Updated machine %v", machine.Name)
+	}
 	return nil
 }
 
