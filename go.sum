@@ -429,8 +429,6 @@ github.com/openshift/client-go v0.0.0-20250710075018-396b36f983ee h1:tOtrrxfDEW8
 github.com/openshift/client-go v0.0.0-20250710075018-396b36f983ee/go.mod h1:zhRiYyNMk89llof2qEuGPWPD+joQPhCRUc2IK0SB510=
 github.com/openshift/cluster-api-actuator-pkg/testutils v0.0.0-20250718085303-e712b1ebf374 h1:ldUi0e64kdYJC2+ucB24GRXIXfMnI3NpSkcnalPqBGo=
 github.com/openshift/cluster-api-actuator-pkg/testutils v0.0.0-20250718085303-e712b1ebf374/go.mod h1:3P6CIJp8Wyvg5YrUxA5Pkd7p+zWAgAmmG/3aticLr4I=
-github.com/openshift/cluster-api-provider-openstack v0.9.1-0.20250821110354-61c49ece8d29 h1:J+oD+/HJDJWtWVtjL9K69AhuSrpEErhoRNdoLzzwxxQ=
-github.com/openshift/cluster-api-provider-openstack v0.9.1-0.20250821110354-61c49ece8d29/go.mod h1:ecR9lx4XbOr3Gg2CGNgM3wguuV6l31Nd5rUccE+xjKs=
 github.com/openshift/cluster-control-plane-machine-set-operator v0.0.0-20250424110138-1dbf0c7a5d51 h1:WaM4FDg2BzGAHjZr/JlKxREIqBALiYBpdBqjAxXj49U=
 github.com/openshift/cluster-control-plane-machine-set-operator v0.0.0-20250424110138-1dbf0c7a5d51/go.mod h1:cp9GawS6eRLeQFvnAu0NVuh3grPSaVS5vRGdydle2HQ=
 github.com/openshift/library-go v0.0.0-20250711143941-47604345e7ea h1:0BNis5UGo5Z7J9GtRY1nw/pt8hWxIZqvfqnqH3eV5cs=
@@ -872,6 +870,8 @@ rsc.io/quote/v3 v3.1.0/go.mod h1:yEA65RcK8LyAZtP9Kv3t0HmxON59tX3rD+tICJqUlj0=
 rsc.io/sampler v1.3.0/go.mod h1:T1hPZKmBbMNahiBKFy5HrXp6adAjACjK9JXDnKaTXpA=
 sigs.k8s.io/cluster-api v1.9.4 h1:pa2Ho50F9Js/Vv/Jy11TcpmGiqY2ukXCoDj/dY25Y7M=
 sigs.k8s.io/cluster-api v1.9.4/go.mod h1:9DjpPCxJJo7/mH+KceINNJHr9c5X9S9HEp2B8JG3Uv8=
+sigs.k8s.io/cluster-api-provider-openstack v0.9.3-0.20251120124404-2c507cd316ab h1:dfFGOVRVNqHn8iz6D/BVOE9hnzu10VifVEVVP92PkNU=
+sigs.k8s.io/cluster-api-provider-openstack v0.9.3-0.20251120124404-2c507cd316ab/go.mod h1:ecR9lx4XbOr3Gg2CGNgM3wguuV6l31Nd5rUccE+xjKs=
 sigs.k8s.io/controller-runtime v0.20.1 h1:JbGMAG/X94NeM3xvjenVUaBjy6Ui4Ogd/J5ZtjZnHaE=
 sigs.k8s.io/controller-runtime v0.20.1/go.mod h1:BrP3w158MwvB3ZbNpaAcIKkHQ7YGpYnzpoSTZ8E14WU=
 sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-20240923090159-236e448db12c h1:w1vANkdIpYwbEZH0y1C7iJItgdEGvF9A3eCdRmLhg8I=
