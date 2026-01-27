@@ -23,7 +23,7 @@ require (
 	k8s.io/component-base v0.33.3
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
-	sigs.k8s.io/cluster-api-provider-openstack v0.9.1
+	sigs.k8s.io/cluster-api-provider-openstack v0.9.3-0.20251120124404-2c507cd316ab
 	sigs.k8s.io/controller-runtime v0.20.1
 	sigs.k8s.io/yaml v1.4.0
 )
@@ -118,10 +118,4 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.6.0 // indirect
 )
 
-replace (
-	github.com/elazarl/goproxy => github.com/elazarl/goproxy v0.0.0-20230731152917-f99041a5c027
-	// while we wait on [1] to merge
-	//
-	// [1] https://github.com/kubernetes-sigs/cluster-api-provider-openstack/pull/2612
-	sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.9.1-0.20250821110354-61c49ece8d29
-)
+replace github.com/elazarl/goproxy => github.com/elazarl/goproxy v0.0.0-20230731152917-f99041a5c027
