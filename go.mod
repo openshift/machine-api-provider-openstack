@@ -20,7 +20,7 @@ require (
 	k8s.io/cluster-bootstrap v0.30.1
 	k8s.io/component-base v0.30.2
 	k8s.io/klog/v2 v2.120.1
-	sigs.k8s.io/cluster-api-provider-openstack v0.9.1
+	sigs.k8s.io/cluster-api-provider-openstack v0.9.3-0.20251120124404-2c507cd316ab
 	sigs.k8s.io/controller-runtime v0.18.4
 	sigs.k8s.io/yaml v1.4.0
 )
