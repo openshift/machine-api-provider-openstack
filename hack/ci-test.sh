@@ -20,8 +20,14 @@ set -o pipefail
 
 REPO_ROOT=$(dirname "${BASH_SOURCE}")/..
 
-cd $REPO_ROOT && \
-	source ./hack/fetch_ext_bins.sh && \
+cd $REPO_ROOT
+
+# The only test that requires kubebuilder-tools (envtest) is currently skipped
+# (see pkg/machineset/controller_suite_test.go). Skip downloading the tools
+# until the envtest test is re-enabled.
+SKIP_FETCH_TOOLS=1
+
+source ./hack/fetch_ext_bins.sh && \
 	fetch_tools && \
 	setup_envs && \
 	make unit
