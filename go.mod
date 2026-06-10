@@ -119,3 +119,5 @@ require (
 )
 
 replace github.com/elazarl/goproxy => github.com/elazarl/goproxy v0.0.0-20230731152917-f99041a5c027
+
+replace sigs.k8s.io/cluster-api-provider-openstack => github.com/openshift/cluster-api-provider-openstack v0.9.1-0.20260608151417-e831b17e5462
