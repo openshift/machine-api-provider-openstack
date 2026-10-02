@@ -10,8 +10,7 @@ import (
 	"time"
 
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/ginkgo/extensions/table"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	gtypes "github.com/onsi/gomega/types"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
