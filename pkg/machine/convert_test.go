@@ -1,19 +1,49 @@
 package machine
 
 import (
+	"context"
 	"encoding/json"
-	"reflect"
 	"testing"
 
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/servergroups"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/servergroups"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/subnets"
+
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
+
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/ptr"
 	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta2"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
+	"sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/optional"
 )
+
+const (
+	testFlavorName1 = "m1.xlarge"
+	testFlavorName2 = "m1.large"
+
+	testFlavorID1 = "92f33707-6e04-4756-b470-6902f01289bb"
+	testFlavorID2 = "1"
+)
+
+var testFlavors = map[string]string{
+	testFlavorName1: testFlavorID1,
+}
+
+const (
+	testImageName1 = "test-image-1"
+	testImageName2 = "test-image-2"
+
+	testImageID1 = "92f33707-6e04-4756-b470-6902f01289bb"
+	testImageID2 = "f4dd1746-bba9-4932-be83-1b20d0a5adc9"
+)
+
+var testImages = map[string]string{
+	testImageName1: testImageID1,
+	testImageName2: testImageID2,
+}
 
 type testSubnetsGetter struct{}
 
@@ -27,16 +57,36 @@ func newSubnetsGetter() testSubnetsGetter {
 
 type testInstanceService struct{}
 
-func (testInstanceService) GetServerGroupsByName(name string) ([]servergroups.ServerGroup, error) {
+var _ instanceService = &testInstanceService{}
+
+func (testInstanceService) GetServerGroupsByName(ctx context.Context, name string) ([]servergroups.ServerGroup, error) {
 	return []servergroups.ServerGroup{}, nil
 }
 
-func (testInstanceService) CreateServerGroup(name string) (*servergroups.ServerGroup, error) {
+func (testInstanceService) CreateServerGroup(ctx context.Context, name string) (*servergroups.ServerGroup, error) {
 	servergroup := servergroups.ServerGroup{
 		Name:     "fakeServerGroup",
 		Policies: []string{"soft-anti-affinity"},
 	}
 	return &servergroup, nil
+}
+
+func (testInstanceService) GetFlavorID(ctx context.Context, flavorName string) (string, error) {
+	f, ok := testFlavors[flavorName]
+	if !ok {
+		return "", &gophercloud.ErrResourceNotFound{Name: flavorName, ResourceType: "flavor"}
+	}
+
+	return f, nil
+}
+
+func (testInstanceService) GetImageID(ctx context.Context, imageName string) (string, error) {
+	img, ok := testImages[imageName]
+	if !ok {
+		return "", gophercloud.ErrResourceNotFound{Name: imageName, ResourceType: "image"}
+	}
+
+	return img, nil
 }
 
 func newInstanceService() testInstanceService {
@@ -76,21 +126,17 @@ func withSubnetParam(subnetParam machinev1alpha1.SubnetParam) func(*machinev1alp
 }
 
 func TestPortProfileToCapov1BindingProfile(t *testing.T) {
-	type checkFunc func(*testing.T, capov1.BindingProfile)
+	type checkFunc func(*testing.T, *capov1.BindingProfile)
 
 	that := func(fns ...checkFunc) []checkFunc { return fns }
-	hasOVSHWOffloadEnabled := func(want bool) checkFunc {
-		return func(t *testing.T, bindingProfile capov1.BindingProfile) {
-			if have := bindingProfile.OVSHWOffload; want != have {
-				t.Errorf("expected bindingProfile to have OVSHWOffload %t, found %t", want, have)
-			}
+	hasOVSHWOffloadEnabled := func(want *bool) checkFunc {
+		return func(t *testing.T, bindingProfile *capov1.BindingProfile) {
+			assert.Equal(t, want, bindingProfile.OVSHWOffload, "unexpected OVSHWOffload in bindingProfile")
 		}
 	}
-	hasTrustedVFEnabled := func(want bool) checkFunc {
-		return func(t *testing.T, bindingProfile capov1.BindingProfile) {
-			if have := bindingProfile.TrustedVF; want != have {
-				t.Errorf("expected bindingProfile to have TrustedVF %t, found %t", want, have)
-			}
+	hasTrustedVFEnabled := func(want *bool) checkFunc {
+		return func(t *testing.T, bindingProfile *capov1.BindingProfile) {
+			assert.Equal(t, want, bindingProfile.TrustedVF, "unexpected TrustedVF in bindingProfile")
 		}
 	}
 
@@ -105,8 +151,8 @@ func TestPortProfileToCapov1BindingProfile(t *testing.T) {
 				"foo": "bar",
 			},
 			check: that(
-				hasOVSHWOffloadEnabled(false),
-				hasTrustedVFEnabled(false),
+				hasOVSHWOffloadEnabled(nil),
+				hasTrustedVFEnabled(nil),
 			),
 		},
 		{
@@ -115,8 +161,8 @@ func TestPortProfileToCapov1BindingProfile(t *testing.T) {
 				"capabilities": "switchdev",
 			},
 			check: that(
-				hasOVSHWOffloadEnabled(true),
-				hasTrustedVFEnabled(false),
+				hasOVSHWOffloadEnabled(new(true)),
+				hasTrustedVFEnabled(nil),
 			),
 		},
 		{
@@ -125,8 +171,8 @@ func TestPortProfileToCapov1BindingProfile(t *testing.T) {
 				"trusted": "true",
 			},
 			check: that(
-				hasOVSHWOffloadEnabled(false),
-				hasTrustedVFEnabled(true),
+				hasOVSHWOffloadEnabled(nil),
+				hasTrustedVFEnabled(new(true)),
 			),
 		},
 		{
@@ -136,8 +182,8 @@ func TestPortProfileToCapov1BindingProfile(t *testing.T) {
 				"trusted":      "true",
 			},
 			check: that(
-				hasOVSHWOffloadEnabled(true),
-				hasTrustedVFEnabled(true),
+				hasOVSHWOffloadEnabled(new(true)),
+				hasTrustedVFEnabled(new(true)),
 			),
 		},
 	} {
@@ -150,44 +196,41 @@ func TestPortProfileToCapov1BindingProfile(t *testing.T) {
 	}
 }
 
-func TestSecurityGroupParamToCapov1SecurityGroupFilter(t *testing.T) {
-	type checkFunc func(*testing.T, []capov1.SecurityGroupFilter)
-	type securityGroupFilterCheckFunc func(*testing.T, capov1.SecurityGroupFilter)
+func TestSecurityGroupParamToCapov1SecurityGroupParams(t *testing.T) {
+	type checkFunc func(*testing.T, []capov1.SecurityGroupParam)
+	type securityGroupFilterCheckFunc func(*testing.T, capov1.SecurityGroupParam)
 
 	that := func(fns ...checkFunc) []checkFunc { return fns }
 	hasSecurityGroupFilters := func(want int) checkFunc {
-		return func(t *testing.T, securityGroupFilters []capov1.SecurityGroupFilter) {
-			if have := len(securityGroupFilters); want != have {
-				t.Errorf("expected %d securityGroupFilters, found %d", want, have)
-			}
+		return func(t *testing.T, securityGroupParams []capov1.SecurityGroupParam) {
+			assert.Equal(t, want, len(securityGroupParams), "unexpected count of securityGroupParams")
 		}
 	}
 
 	securityGroupFilter := func(i int, fns ...securityGroupFilterCheckFunc) checkFunc {
-		return func(t *testing.T, securityGroupFilters []capov1.SecurityGroupFilter) {
-			if len(securityGroupFilters) <= i {
-				t.Errorf("error checking securityGroupFilter %d: no such securityGroupFilter", i)
+		return func(t *testing.T, securityGroupParams []capov1.SecurityGroupParam) {
+			if !assert.Less(t, i, len(securityGroupParams), "error checking securityGroupParams %d: no such securityGroupParams", i) {
 				return
 			}
 			for _, check := range fns {
-				check(t, securityGroupFilters[i])
+				check(t, securityGroupParams[i])
 			}
 		}
 	}
 
-	hasSecurityGroupUUID := func(want string) securityGroupFilterCheckFunc {
-		return func(t *testing.T, securityGroupFilter capov1.SecurityGroupFilter) {
-			if have := securityGroupFilter.ID; want != have {
-				t.Errorf("expected securityGroupFilter to have UUID %q, found %q", want, have)
-			}
+	hasSecurityGroupUUID := func(want optional.String) securityGroupFilterCheckFunc {
+		return func(t *testing.T, securityGroupParams capov1.SecurityGroupParam) {
+			assert.Equal(t, want, securityGroupParams.ID, "expected securityGroupFilter to have UUID")
 		}
 	}
 
 	hasProjectID := func(want string) securityGroupFilterCheckFunc {
-		return func(t *testing.T, securityGroupFilter capov1.SecurityGroupFilter) {
-			if have := securityGroupFilter.ProjectID; want != have {
-				t.Errorf("expected securityGroupFilter to have project ID %q, found %q", want, have)
+		return func(t *testing.T, securityGroupParam capov1.SecurityGroupParam) {
+			if !assert.NotNil(t, securityGroupParam.Filter, "expected securityGroupParam to have filter") {
+				return
 			}
+
+			assert.Equal(t, want, securityGroupParam.Filter.ProjectID, "expected securityGroupFilter to have project ID")
 		}
 	}
 
@@ -205,7 +248,7 @@ func TestSecurityGroupParamToCapov1SecurityGroupFilter(t *testing.T) {
 			},
 			check: that(
 				hasSecurityGroupFilters(1),
-				securityGroupFilter(0, hasSecurityGroupUUID("c0f694ff-aabf-479f-8fa2-589696c03715")),
+				securityGroupFilter(0, hasSecurityGroupUUID(optionalString("c0f694ff-aabf-479f-8fa2-589696c03715"))),
 			),
 		},
 		{
@@ -223,9 +266,9 @@ func TestSecurityGroupParamToCapov1SecurityGroupFilter(t *testing.T) {
 			},
 			check: that(
 				hasSecurityGroupFilters(3),
-				securityGroupFilter(0, hasSecurityGroupUUID("c0f694ff-aabf-479f-8fa2-589696c03715")),
-				securityGroupFilter(1, hasSecurityGroupUUID("c0f694ff-aabf-479f-8fa2-589696c03716")),
-				securityGroupFilter(2, hasSecurityGroupUUID("c0f694ff-aabf-479f-8fa2-589696c03717")),
+				securityGroupFilter(0, hasSecurityGroupUUID(optionalString("c0f694ff-aabf-479f-8fa2-589696c03715"))),
+				securityGroupFilter(1, hasSecurityGroupUUID(optionalString("c0f694ff-aabf-479f-8fa2-589696c03716"))),
+				securityGroupFilter(2, hasSecurityGroupUUID(optionalString("c0f694ff-aabf-479f-8fa2-589696c03717"))),
 			),
 		},
 		{
@@ -252,9 +295,9 @@ func TestSecurityGroupParamToCapov1SecurityGroupFilter(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			securityGroupFilters := securityGroupParamToCapov1SecurityGroupFilter(tc.securityGroupParams)
+			securityGroupParams := securityGroupParamToCapov1SecurityGroupParams(tc.securityGroupParams)
 			for _, check := range tc.check {
-				check(t, securityGroupFilters)
+				check(t, securityGroupParams)
 			}
 		})
 	}
@@ -268,16 +311,13 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 	that := func(fns ...checkFunc) []checkFunc { return fns }
 	hasPorts := func(want int) checkFunc {
 		return func(t *testing.T, ports []capov1.PortOpts) {
-			if have := len(ports); want != have {
-				t.Errorf("expected %d ports, found %d", want, have)
-			}
+			assert.Equal(t, want, len(ports), "expected ports")
 		}
 	}
 
 	port := func(i int, fns ...portCheckFunc) checkFunc {
 		return func(t *testing.T, ports []capov1.PortOpts) {
-			if len(ports) <= i {
-				t.Errorf("error checking port %d: no such port", i)
+			if !assert.Less(t, i, len(ports), "error checking port %d: no such port", i) {
 				return
 			}
 			for _, check := range fns {
@@ -287,54 +327,27 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 	}
 	hasNetworkProjectID := func(want string) portCheckFunc {
 		return func(t *testing.T, port capov1.PortOpts) {
-			if have := port.Network.ProjectID; want != have {
-				t.Errorf("expected port to have ProjectID %q, found %q", want, have)
+			if !assert.NotNil(t, port.Network.Filter, "expected port to have network filter") {
+				return
 			}
+
+			assert.Equal(t, want, port.Network.Filter.ProjectID, "expected port to have ProjectID")
 		}
 	}
 	hasTags := func(expected ...string) portCheckFunc {
 		return func(t *testing.T, port capov1.PortOpts) {
-			if want, have := len(expected), len(port.Tags); want != have {
-				t.Errorf("expected port to have %d tags, found %d", want, have)
-			}
-			for _, want := range expected {
-				var found bool
-				for _, have := range port.Tags {
-					if want == have {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Errorf("expected port tags to contain %q, not found", want)
-				}
-			}
-			for _, have := range port.Tags {
-				var found bool
-				for _, want := range expected {
-					if want == have {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Errorf("found unexpected tag %q", have)
-				}
-			}
+			assert.Equal(t, expected, port.Tags, "expected port to have tags")
 		}
 	}
 	hasFixedIPs := func(want int) portCheckFunc {
 		return func(t *testing.T, port capov1.PortOpts) {
-			if have := len(port.FixedIPs); want != have {
-				t.Errorf("expected port to have %d FixedIPs, found %q", want, have)
-			}
+			assert.Equal(t, want, len(port.FixedIPs), "expected port to have %d FixedIPs", want)
 		}
 	}
 
 	fixedIP := func(i int, fns ...fixedIPCheckFunc) portCheckFunc {
 		return func(t *testing.T, port capov1.PortOpts) {
-			if len(port.FixedIPs) <= i {
-				t.Errorf("error checking fixedIP %d: no such fixedIP", i)
+			if !assert.Less(t, i, len(port.FixedIPs), "error checking fixedIP %d: no such fixedIP", i) {
 				return
 			}
 			for _, check := range fns {
@@ -342,11 +355,9 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 			}
 		}
 	}
-	hasSubnetID := func(want string) fixedIPCheckFunc {
+	hasSubnetID := func(want optional.String) fixedIPCheckFunc {
 		return func(t *testing.T, fixedIP capov1.FixedIP) {
-			if have := fixedIP.Subnet.ID; want != have {
-				t.Errorf("expected fixedIP to have Subnet ID %q, found %q", want, have)
-			}
+			assert.Equal(t, want, fixedIP.Subnet.ID, "expected fixedIP to have Subnet ID")
 		}
 	}
 
@@ -386,9 +397,9 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 			),
 			check: that(
 				hasPorts(3),
-				port(0, hasFixedIPs(1), fixedIP(0, hasSubnetID("subnet-A-UUID")), hasTags("uno")),
-				port(1, hasFixedIPs(1), fixedIP(0, hasSubnetID("subnet-B-UUID")), hasTags("due")),
-				port(2, hasFixedIPs(1), fixedIP(0, hasSubnetID("subnet-C-UUID")), hasTags("tre")),
+				port(0, hasFixedIPs(1), fixedIP(0, hasSubnetID(optionalString("subnet-A-UUID"))), hasTags("uno")),
+				port(1, hasFixedIPs(1), fixedIP(0, hasSubnetID(optionalString("subnet-B-UUID"))), hasTags("due")),
+				port(2, hasFixedIPs(1), fixedIP(0, hasSubnetID(optionalString("subnet-C-UUID"))), hasTags("tre")),
 			),
 		},
 		{
@@ -403,9 +414,9 @@ func TestNetworkParamToCapov1PortOpt(t *testing.T) {
 				hasPorts(1),
 				port(0,
 					hasFixedIPs(3),
-					fixedIP(0, hasSubnetID("subnet-A-UUID")),
-					fixedIP(1, hasSubnetID("subnet-B-UUID")),
-					fixedIP(2, hasSubnetID("subnet-C-UUID")),
+					fixedIP(0, hasSubnetID(optionalString("subnet-A-UUID"))),
+					fixedIP(1, hasSubnetID(optionalString("subnet-B-UUID"))),
+					fixedIP(2, hasSubnetID(optionalString("subnet-C-UUID"))),
 					hasTags("uno", "due", "tre"),
 				),
 			),
@@ -438,35 +449,37 @@ func TestPortOptsToCapov1PortOpts(t *testing.T) {
 			input: machinev1alpha1.PortOpts{
 				FixedIPs:       nil,
 				NetworkID:      "c3127c12-fd96-4ab5-a4e0-dc4a69634f3b",
-				PortSecurity:   ptr.To(true),
+				PortSecurity:   new(true),
 				Profile:        map[string]string{},
 				SecurityGroups: nil,
 				Tags:           []string{"foo", "bar"},
-				Trunk:          ptr.To(false),
+				Trunk:          new(false),
 			},
 			ignoreAddressPairs: true,
 			expected: capov1.PortOpts{
-				AdminStateUp:         nil,
-				Description:          "",
-				DisablePortSecurity:  ptr.To(false),
-				FixedIPs:             []capov1.FixedIP{},
-				MACAddress:           "",
-				NameSuffix:           "",
-				Network:              &capov1.NetworkFilter{ID: "c3127c12-fd96-4ab5-a4e0-dc4a69634f3b"},
-				Profile:              capov1.BindingProfile{},
-				SecurityGroupFilters: []capov1.SecurityGroupFilter{},
-				Tags:                 []string{"foo", "bar"},
-				Trunk:                ptr.To(false),
-				VNICType:             "",
+				Description: nil,
+				FixedIPs:    []capov1.FixedIP{},
+				NameSuffix:  nil,
+				Network: &capov1.NetworkParam{
+					ID: optionalString("c3127c12-fd96-4ab5-a4e0-dc4a69634f3b"),
+				},
+				SecurityGroups: []capov1.SecurityGroupParam{},
+				Tags:           []string{"foo", "bar"},
+				Trunk:          new(false),
+				ResolvedPortSpecFields: capov1.ResolvedPortSpecFields{
+					AdminStateUp:       nil,
+					EnablePortSecurity: new(true),
+					MACAddress:         nil,
+					Profile:            &capov1.BindingProfile{},
+					VNICType:           nil,
+				},
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if actual := portOptsToCapov1PortOpts(&tt.input, tt.ignoreAddressPairs); !reflect.DeepEqual(actual, tt.expected) {
-				t.Errorf("portOptsToCapov1PortOpts() = %v, want %v", actual, tt.expected)
-			}
+			assert.Equal(t, tt.expected, portOptsToCapov1PortOpts(&tt.input, tt.ignoreAddressPairs))
 		})
 	}
 }
@@ -513,9 +526,7 @@ func TestSecurityGroupsToSecurityGroupParams(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := securityGroupsToSecurityGroupParams(tt.securityGroups); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("securityGroupsToSecurityGroupParams() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, securityGroupsToSecurityGroupParams(tt.securityGroups))
 		})
 	}
 }
@@ -534,19 +545,15 @@ func TestMachineToInstanceSpec(t *testing.T) {
 					"cluster-api-provider-openstack",
 					"-",
 				},
-				Ports:          []capov1.PortOpts{},
-				SecurityGroups: []capov1.SecurityGroupFilter{},
 			},
 		},
 		{
-			name: "with image",
+			name: "with image uuid",
 			providerSpec: &machinev1alpha1.OpenstackProviderSpec{
-				Image: "92f33707-6e04-4756-b470-6902f01289bb",
+				Image: testImageID1,
 			},
 			expected: &compute.InstanceSpec{
-				Image:          "92f33707-6e04-4756-b470-6902f01289bb",
-				Ports:          []capov1.PortOpts{},
-				SecurityGroups: []capov1.SecurityGroupFilter{},
+				ImageID: testImageID1,
 				Tags: []string{
 					"cluster-api-provider-openstack",
 					"-",
@@ -554,22 +561,89 @@ func TestMachineToInstanceSpec(t *testing.T) {
 			},
 		},
 		{
-			name: "with root volume",
+			name: "with image name",
+			providerSpec: &machinev1alpha1.OpenstackProviderSpec{
+				Image: testImageName1,
+			},
+			expected: &compute.InstanceSpec{
+				ImageID: testImageID1,
+				Tags: []string{
+					"cluster-api-provider-openstack",
+					"-",
+				},
+			},
+		},
+		{
+			name: "with root volume source uuid",
 			providerSpec: &machinev1alpha1.OpenstackProviderSpec{
 				RootVolume: &machinev1alpha1.RootVolume{
-					SourceUUID: "f4dd1746-bba9-4932-be83-1b20d0a5adc9",
+					SourceUUID: testImageID2,
 					Size:       10,
 				},
 			},
 			expected: &compute.InstanceSpec{
-				Image: "f4dd1746-bba9-4932-be83-1b20d0a5adc9",
-				Ports: []capov1.PortOpts{},
+				ImageID: testImageID2,
 				RootVolume: &capov1.RootVolume{
-					Size:             10,
-					VolumeType:       "",
-					AvailabilityZone: "",
+					SizeGiB: 10,
 				},
-				SecurityGroups: []capov1.SecurityGroupFilter{},
+				Tags: []string{
+					"cluster-api-provider-openstack",
+					"-",
+				},
+			},
+		},
+		{
+			name: "with root volume source name",
+			providerSpec: &machinev1alpha1.OpenstackProviderSpec{
+				RootVolume: &machinev1alpha1.RootVolume{
+					SourceUUID: testImageName2,
+					Size:       10,
+				},
+			},
+			expected: &compute.InstanceSpec{
+				ImageID: testImageID2,
+				RootVolume: &capov1.RootVolume{
+					SizeGiB: 10,
+				},
+				Tags: []string{
+					"cluster-api-provider-openstack",
+					"-",
+				},
+			},
+		},
+		{
+			name: "with flavor uuid",
+			providerSpec: &machinev1alpha1.OpenstackProviderSpec{
+				Flavor: testFlavorID1,
+			},
+			expected: &compute.InstanceSpec{
+				FlavorID: testFlavorID1,
+				Tags: []string{
+					"cluster-api-provider-openstack",
+					"-",
+				},
+			},
+		},
+		{
+			name: "with flavor name",
+			providerSpec: &machinev1alpha1.OpenstackProviderSpec{
+				Flavor: testFlavorName1,
+			},
+			expected: &compute.InstanceSpec{
+				FlavorID: testFlavorID1,
+				Tags: []string{
+					"cluster-api-provider-openstack",
+					"-",
+				},
+			},
+		},
+		{
+			name: "with flavor id(non-uuid)",
+			providerSpec: &machinev1alpha1.OpenstackProviderSpec{
+				Flavor: testFlavorID2,
+			},
+			expected: &compute.InstanceSpec{
+				FlavorID: testFlavorID2,
 				Tags: []string{
 					"cluster-api-provider-openstack",
 					"-",
@@ -580,9 +654,10 @@ func TestMachineToInstanceSpec(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			assert := assert.New(t)
 			bytes, err := json.Marshal(tt.providerSpec)
-			if err != nil {
-				t.Fatal("Failed to marshal provider spec")
+			if !assert.NoError(err, "Failed to marshal provider spec") {
+				return
 			}
 
 			machine := machinev1beta1.Machine{
@@ -600,7 +675,7 @@ func TestMachineToInstanceSpec(t *testing.T) {
 			instanceService := newInstanceService()
 			ignoreAddressPairs := false
 
-			actual, err := MachineToInstanceSpec(
+			actual, err := MachineToInstanceSpec(t.Context(),
 				&machine,
 				apiVIPs,
 				ingressVIPs,
@@ -608,60 +683,11 @@ func TestMachineToInstanceSpec(t *testing.T) {
 				instanceService,
 				ignoreAddressPairs,
 			)
-			if err != nil {
-				t.Fatalf("Expected no error, found one: %v", err)
+			if !assert.NoError(err, "Expected no error, found one: %v", err) {
+				return
 			}
-			if !reflect.DeepEqual(*actual, *tt.expected) {
-				t.Errorf("MachineToInstanceSpec() = %#v, want %#v", *actual, *tt.expected)
-				if !reflect.DeepEqual(actual.Name, tt.expected.Name) {
-					t.Errorf("Mismatched Name, expected %s, got %s", tt.expected.Name, actual.Name)
-				}
-				if !reflect.DeepEqual(actual.Image, tt.expected.Image) {
-					t.Errorf("Mismatched Image, expected %s, got %s", tt.expected.Image, actual.Image)
-				}
-				if !reflect.DeepEqual(actual.ImageUUID, tt.expected.ImageUUID) {
-					t.Errorf("Mismatched ImageUUID, expected %s, got %s", tt.expected.ImageUUID, actual.ImageUUID)
-				}
-				if !reflect.DeepEqual(actual.Flavor, tt.expected.Flavor) {
-					t.Errorf("Mismatched Flavor, expected %s, got %s", tt.expected.Flavor, actual.Flavor)
-				}
-				if !reflect.DeepEqual(actual.SSHKeyName, tt.expected.SSHKeyName) {
-					t.Errorf("Mismatched SSHKeyName, expected %s, got %s", tt.expected.SSHKeyName, actual.SSHKeyName)
-				}
-				if !reflect.DeepEqual(actual.UserData, tt.expected.UserData) {
-					t.Errorf("Mismatched UserData, expected %s, got %s", tt.expected.UserData, actual.UserData)
-				}
-				if !reflect.DeepEqual(actual.Metadata, tt.expected.Metadata) {
-					t.Errorf("Mismatched Metadata, expected %#v, got %#v", tt.expected.Metadata, actual.Metadata)
-				}
-				if !reflect.DeepEqual(actual.ConfigDrive, tt.expected.ConfigDrive) {
-					t.Errorf("Mismatched ConfigDrive, expected %t, got %t", tt.expected.ConfigDrive, actual.ConfigDrive)
-				}
-				if !reflect.DeepEqual(actual.FailureDomain, tt.expected.FailureDomain) {
-					t.Errorf("Mismatched FailureDomain, expected %s, got %s", tt.expected.FailureDomain, actual.FailureDomain)
-				}
-				if !reflect.DeepEqual(actual.RootVolume, tt.expected.RootVolume) {
-					t.Errorf("Mismatched RootVolume, expected %#v, got %#v", tt.expected.RootVolume, actual.RootVolume)
-				}
-				if !reflect.DeepEqual(actual.AdditionalBlockDevices, tt.expected.AdditionalBlockDevices) {
-					t.Errorf("Mismatched AdditionalBlockDevices, expected %#v, got %#v", tt.expected.AdditionalBlockDevices, actual.AdditionalBlockDevices)
-				}
-				if !reflect.DeepEqual(actual.ServerGroupID, tt.expected.ServerGroupID) {
-					t.Errorf("Mismatched ServerGroupID, expected %s, got %s", tt.expected.ServerGroupID, actual.ServerGroupID)
-				}
-				if !reflect.DeepEqual(actual.Trunk, tt.expected.Trunk) {
-					t.Errorf("Mismatched Trunk, expected %t, got %t", tt.expected.Trunk, actual.Trunk)
-				}
-				if !reflect.DeepEqual(actual.Tags, tt.expected.Tags) {
-					t.Errorf("Mismatched Tags, expected %#v, got %#v", tt.expected.Tags, actual.Tags)
-				}
-				if !reflect.DeepEqual(actual.SecurityGroups, tt.expected.SecurityGroups) {
-					t.Errorf("Mismatched SecurityGroups, expected %#v, got %#v", tt.expected.SecurityGroups, actual.SecurityGroups)
-				}
-				if !reflect.DeepEqual(actual.Ports, tt.expected.Ports) {
-					t.Errorf("Mismatched Ports, expected %#v, got %#v", tt.expected.Ports, actual.Ports)
-				}
-			}
+
+			assert.Equal(tt.expected, actual, "unexpected result of MachineToInstanceSpec")
 		})
 	}
 }
@@ -673,9 +699,7 @@ func TestExtractImageFromProviderSpec(t *testing.T) {
 				t.Errorf("unexpected panic: %v", r)
 			}
 		}()
-		if expected, actual := "", extractImageFromProviderSpec(&machinev1alpha1.OpenstackProviderSpec{}); expected != actual {
-			t.Errorf("expected image to be %q, got %q", expected, actual)
-		}
+		assert.Equal(t, "", extractImageFromProviderSpec(&machinev1alpha1.OpenstackProviderSpec{}), "expected image")
 	})
 }
 
@@ -686,8 +710,6 @@ func TestExtractRootVolumeFromProviderSpec(t *testing.T) {
 				t.Errorf("unexpected panic: %v", r)
 			}
 		}()
-		if expected, actual := (*capov1.RootVolume)(nil), extractRootVolumeFromProviderSpec(&machinev1alpha1.OpenstackProviderSpec{}); expected != actual {
-			t.Errorf("expected root volume to be %q, got %q", expected, actual)
-		}
+		assert.Equal(t, (*capov1.RootVolume)(nil), extractRootVolumeFromProviderSpec(&machinev1alpha1.OpenstackProviderSpec{}), "expected root volume")
 	})
 }

@@ -15,7 +15,6 @@ require (
 	github.com/openshift/library-go v0.0.0-20260716104731-fdf18b82797f
 	github.com/openshift/machine-api-operator v0.2.1-0.20260924000945-56ace7600d0f
 	github.com/stretchr/testify v1.12.1
-	golang.org/x/text v0.42.0
 	k8s.io/api v0.36.4
 	k8s.io/apimachinery v0.36.4
 	k8s.io/apiserver v0.36.4
@@ -104,6 +103,7 @@ require (
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.5.0 // indirect

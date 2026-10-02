@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/flavors"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	gtypes "github.com/onsi/gomega/types"
@@ -19,7 +19,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	cache "sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -47,14 +47,16 @@ type MockInstanceService struct {
 	flavor *flavors.Flavor
 }
 
-func (mock *MockInstanceService) GetFlavorID(flavorName string) (string, error) {
+var _ OpenStackInstanceService = &MockInstanceService{}
+
+func (mock *MockInstanceService) GetFlavorID(ctx context.Context, flavorName string) (string, error) {
 	if flavorName == mock.flavor.Name {
 		return mock.flavor.ID, nil
 	}
 	return "", fmt.Errorf("flavor %q not found", flavorName)
 }
 
-func (mock *MockInstanceService) GetFlavorInfo(flavorID string) (flavor *flavors.Flavor, err error) {
+func (mock *MockInstanceService) GetFlavorInfo(ctx context.Context, flavorID string) (flavor *flavors.Flavor, err error) {
 	if flavorID == mock.flavor.ID {
 		return mock.flavor, nil
 	}
@@ -74,7 +76,7 @@ func RandomString(prefix string, n int) string {
 
 var _ = Describe("Reconciler", func() {
 	var c client.Client
-	var fakeRecorder *record.FakeRecorder
+	var fakeRecorder *events.FakeRecorder
 	var namespace *corev1.Namespace
 	var suiteFlavorCache = flavorcache.New()
 	var suiteInstanceService = &MockInstanceService{
@@ -91,7 +93,7 @@ var _ = Describe("Reconciler", func() {
 
 		Expect(r.SetupWithManager(mgr, controller.Options{})).To(Succeed())
 
-		fakeRecorder = record.NewFakeRecorder(4)
+		fakeRecorder = events.NewFakeRecorder(4)
 		r.eventRecorder = fakeRecorder
 		r.flavorCache = suiteFlavorCache
 		c = mgr.GetClient()
@@ -295,7 +297,7 @@ func TestReconcile(t *testing.T) {
 			g.Expect(err).ToNot(HaveOccurred())
 
 			//Use the reconciler we create to reconcile the machineset
-			_, err = r.reconcile(context.WithValue(ctx, "injected instanceService", serviceClient), machineSet)
+			_, err = r.reconcile(context.WithValue(t.Context(), "injected instanceService", serviceClient), machineSet)
 			g.Expect(err != nil).To(Equal(tc.expectErr))
 			g.Expect(machineSet.Annotations).To(Equal(tc.expectedAnnotations))
 		})
