@@ -17,26 +17,34 @@ limitations under the License.
 package networking
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/attributestags"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/attributestags"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/layer3/floatingips"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/utils/ptr"
 
-	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
+	infrav1alpha1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha1"
+	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta2"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/metrics"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/utils/names"
 )
 
-func (s *Service) GetOrCreateFloatingIP(eventObject runtime.Object, openStackCluster *infrav1.OpenStackCluster, clusterName, ip string) (*floatingips.FloatingIP, error) {
+func (s *Service) GetOrCreateFloatingIP(eventObject runtime.Object, openStackCluster *infrav1.OpenStackCluster, clusterResourceName string, ip *string) (*floatingips.FloatingIP, error) {
 	var fp *floatingips.FloatingIP
 	var err error
 	var fpCreateOpts floatingips.CreateOpts
 
-	if ip != "" {
-		fp, err = s.GetFloatingIP(ip)
+	// This is a safeguard, we shouldn't reach it and if we do, it's something to fix in the caller of the function.
+	if openStackCluster.Status.ExternalNetwork == nil {
+		return nil, fmt.Errorf("external network not found")
+	}
+
+	if ptr.Deref(ip, "") != "" {
+		fp, err = s.GetFloatingIP(*ip)
 		if err != nil {
 			return nil, err
 		}
@@ -44,30 +52,90 @@ func (s *Service) GetOrCreateFloatingIP(eventObject runtime.Object, openStackClu
 			return fp, nil
 		}
 		// only admin can add ip address
-		fpCreateOpts.FloatingIP = ip
+		fpCreateOpts.FloatingIP = *ip
 	}
 
 	fpCreateOpts.FloatingNetworkID = openStackCluster.Status.ExternalNetwork.ID
-	fpCreateOpts.Description = names.GetDescription(clusterName)
+	fpCreateOpts.Description = names.GetDescription(clusterResourceName)
+
+	// Determine standard-attr-tag support before allocating the floating IP,
+	// so that a failed extension lookup doesn't leak an allocated floating
+	// IP that CAPO never records or retries tagging for.
+	var tagsSupported bool
+	if len(openStackCluster.Spec.Tags) > 0 {
+		tagsSupported, err = s.hasStandardAttrTagExtension()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	s.scope.Logger().Info("Creating floating IP", "ip", fpCreateOpts.FloatingIP, "floatingNetworkID", openStackCluster.Status.ExternalNetwork.ID, "description", fpCreateOpts.Description)
 
 	fp, err = s.client.CreateFloatingIP(fpCreateOpts)
 	if err != nil {
-		record.Warnf(eventObject, "FailedCreateFloatingIP", "Failed to create floating IP %s: %v", ip, err)
+		record.Warnf(eventObject, "FailedCreateFloatingIP", "Failed to create floating IP %s: %v", fpCreateOpts.FloatingIP, err)
 		return nil, err
 	}
 
 	if len(openStackCluster.Spec.Tags) > 0 {
-		mc := metrics.NewMetricPrometheusContext("floating_ip", "update")
-		_, err = s.client.ReplaceAllAttributesTags("floatingips", fp.ID, attributestags.ReplaceAllOpts{
-			Tags: openStackCluster.Spec.Tags,
-		})
-		if mc.ObserveRequest(err) != nil {
-			return nil, err
+		if tagsSupported {
+			mc := metrics.NewMetricPrometheusContext("floating_ip", "update")
+			_, err = s.client.ReplaceAllAttributesTags("floatingips", fp.ID, attributestags.ReplaceAllOpts{
+				Tags: openStackCluster.Spec.Tags,
+			})
+			if mc.ObserveRequest(err) != nil {
+				return nil, err
+			}
+		} else {
+			s.scope.Logger().V(4).Info("standard-attr-tag extension not available, skipping tag replacement", "resourceType", "floatingips", "resourceID", fp.ID)
 		}
 	}
 
 	record.Eventf(eventObject, "SuccessfulCreateFloatingIP", "Created floating IP %s with id %s", fp.FloatingIP, fp.ID)
 	return fp, nil
+}
+
+func (s *Service) CreateFloatingIPForPool(pool *infrav1alpha1.OpenStackFloatingIPPool) (*floatingips.FloatingIP, error) {
+	var fpCreateOpts floatingips.CreateOpts
+
+	fpCreateOpts.FloatingNetworkID = pool.Status.FloatingIPNetwork.ID
+	fpCreateOpts.Description = fmt.Sprintf("Created by cluster-api-provider-openstack OpenStackFloatingIPPool %s", pool.Name)
+
+	fp, err := s.client.CreateFloatingIP(fpCreateOpts)
+	if err != nil {
+		record.Warnf(pool, "FailedCreateFloatingIP", "%s failed to create floating IP: %v", pool.Name, err)
+		return nil, err
+	}
+
+	record.Eventf(pool, "SuccessfulCreateFloatingIP", "%s created floating IP %s with id %s", pool.Name, fp.FloatingIP, fp.ID)
+	return fp, nil
+}
+
+func (s *Service) TagFloatingIP(ip string, tag string) error {
+	fip, err := s.GetFloatingIP(ip)
+	if err != nil {
+		return err
+	}
+	if fip == nil {
+		return nil
+	}
+
+	mc := metrics.NewMetricPrometheusContext("floating_ip", "update")
+	_, err = s.client.ReplaceAllAttributesTags("floatingips", fip.ID, attributestags.ReplaceAllOpts{
+		Tags: []string{tag},
+	})
+	if mc.ObserveRequest(err) != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) GetFloatingIPsByTag(tag string) ([]floatingips.FloatingIP, error) {
+	fipList, err := s.client.ListFloatingIP(floatingips.ListOpts{Tags: tag})
+	if err != nil {
+		return nil, err
+	}
+	return fipList, nil
 }
 
 func (s *Service) GetFloatingIP(ip string) (*floatingips.FloatingIP, error) {

@@ -16,24 +16,33 @@ limitations under the License.
 
 package networking
 
-import (
-	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
+const (
+	securityGroupRuleDirectionIngress            = "ingress"
+	securityGroupRuleDirectionEgress             = "egress"
+	securityGroupRuleEtherTypeIPv4               = "IPv4"
+	securityGroupRuleEtherTypeIPv6               = "IPv6"
+	securityGroupRuleProtocolTCP                 = "tcp"
+	securityGroupRuleProtocolUDP                 = "udp"
+	securityGroupRuleDescriptionSSH              = "SSH"
+	securityGroupRuleDescriptionKubeletAPI       = "Kubelet API"
+	securityGroupRuleDescriptionNodePortServices = "Node Port Services"
+	securityGroupRuleDescriptionInClusterIngress = "In-cluster Ingress"
 )
 
-var defaultRules = []infrav1.SecurityGroupRule{
+var defaultRules = []resolvedSecurityGroupRuleSpec{
 	{
-		Direction:      "egress",
+		Direction:      securityGroupRuleDirectionEgress,
 		Description:    "Full open",
-		EtherType:      "IPv4",
+		EtherType:      securityGroupRuleEtherTypeIPv4,
 		PortRangeMin:   0,
 		PortRangeMax:   0,
 		Protocol:       "",
 		RemoteIPPrefix: "",
 	},
 	{
-		Direction:      "egress",
+		Direction:      securityGroupRuleDirectionEgress,
 		Description:    "Full open",
-		EtherType:      "IPv6",
+		EtherType:      securityGroupRuleEtherTypeIPv6,
 		PortRangeMin:   0,
 		PortRangeMax:   0,
 		Protocol:       "",
@@ -42,223 +51,191 @@ var defaultRules = []infrav1.SecurityGroupRule{
 }
 
 // Permit traffic for etcd, kubelet.
-func getSGControlPlaneCommon(remoteGroupIDSelf, secWorkerGroupID string) []infrav1.SecurityGroupRule {
-	return []infrav1.SecurityGroupRule{
+func getSGControlPlaneCommon(remoteGroupIDSelf, secWorkerGroupID string) []resolvedSecurityGroupRuleSpec {
+	return []resolvedSecurityGroupRuleSpec{
 		{
 			Description:   "Etcd",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
 			PortRangeMin:  2379,
 			PortRangeMax:  2380,
-			Protocol:      "tcp",
+			Protocol:      securityGroupRuleProtocolTCP,
 			RemoteGroupID: remoteGroupIDSelf,
 		},
 		{
 			// kubeadm says this is needed
-			Description:   "Kubelet API",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
+			Description:   securityGroupRuleDescriptionKubeletAPI,
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
 			PortRangeMin:  10250,
 			PortRangeMax:  10250,
-			Protocol:      "tcp",
+			Protocol:      securityGroupRuleProtocolTCP,
 			RemoteGroupID: remoteGroupIDSelf,
 		},
 		{
 			// This is needed to support metrics-server deployments
-			Description:   "Kubelet API",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
+			Description:   securityGroupRuleDescriptionKubeletAPI,
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
 			PortRangeMin:  10250,
 			PortRangeMax:  10250,
-			Protocol:      "tcp",
-			RemoteGroupID: secWorkerGroupID,
-		},
-	}
-}
-
-// Permit traffic for calico.
-func getSGControlPlaneCalico(remoteGroupIDSelf, secWorkerGroupID string) []infrav1.SecurityGroupRule {
-	return []infrav1.SecurityGroupRule{
-		{
-			Description:   "BGP (calico)",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
-			PortRangeMin:  179,
-			PortRangeMax:  179,
-			Protocol:      "tcp",
-			RemoteGroupID: remoteGroupIDSelf,
-		},
-		{
-			Description:   "BGP (calico)",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
-			PortRangeMin:  179,
-			PortRangeMax:  179,
-			Protocol:      "tcp",
-			RemoteGroupID: secWorkerGroupID,
-		},
-		{
-			Description:   "IP-in-IP (calico)",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
-			Protocol:      "4",
-			RemoteGroupID: remoteGroupIDSelf,
-		},
-		{
-			Description:   "IP-in-IP (calico)",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
-			Protocol:      "4",
+			Protocol:      securityGroupRuleProtocolTCP,
 			RemoteGroupID: secWorkerGroupID,
 		},
 	}
 }
 
 // Permit traffic for kubelet.
-func getSGWorkerCommon(remoteGroupIDSelf, secControlPlaneGroupID string) []infrav1.SecurityGroupRule {
-	return []infrav1.SecurityGroupRule{
+func getSGWorkerCommon(remoteGroupIDSelf, secControlPlaneGroupID string) []resolvedSecurityGroupRuleSpec {
+	return []resolvedSecurityGroupRuleSpec{
 		{
 			// This is needed to support metrics-server deployments
-			Description:   "Kubelet API",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
+			Description:   securityGroupRuleDescriptionKubeletAPI,
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
 			PortRangeMin:  10250,
 			PortRangeMax:  10250,
-			Protocol:      "tcp",
+			Protocol:      securityGroupRuleProtocolTCP,
 			RemoteGroupID: remoteGroupIDSelf,
 		},
 		{
-			Description:   "Kubelet API",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
+			Description:   securityGroupRuleDescriptionKubeletAPI,
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
 			PortRangeMin:  10250,
 			PortRangeMax:  10250,
-			Protocol:      "tcp",
-			RemoteGroupID: secControlPlaneGroupID,
-		},
-	}
-}
-
-// Permit traffic for calico.
-func getSGWorkerCalico(remoteGroupIDSelf, secControlPlaneGroupID string) []infrav1.SecurityGroupRule {
-	return []infrav1.SecurityGroupRule{
-		{
-			Description:   "BGP (calico)",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
-			PortRangeMin:  179,
-			PortRangeMax:  179,
-			Protocol:      "tcp",
-			RemoteGroupID: remoteGroupIDSelf,
-		},
-		{
-			Description:   "BGP (calico)",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
-			PortRangeMin:  179,
-			PortRangeMax:  179,
-			Protocol:      "tcp",
-			RemoteGroupID: secControlPlaneGroupID,
-		},
-		{
-			Description:   "IP-in-IP (calico)",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
-			Protocol:      "4",
-			RemoteGroupID: remoteGroupIDSelf,
-		},
-		{
-			Description:   "IP-in-IP (calico)",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
-			Protocol:      "4",
+			Protocol:      securityGroupRuleProtocolTCP,
 			RemoteGroupID: secControlPlaneGroupID,
 		},
 	}
 }
 
 // Permit traffic for ssh control plane.
-func GetSGControlPlaneSSH(secBastionGroupID string) []infrav1.SecurityGroupRule {
-	return []infrav1.SecurityGroupRule{
+func getSGControlPlaneSSH(secBastionGroupID string) []resolvedSecurityGroupRuleSpec {
+	return []resolvedSecurityGroupRuleSpec{
 		{
-			Description:   "SSH",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
+			Description:   securityGroupRuleDescriptionSSH,
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
 			PortRangeMin:  22,
 			PortRangeMax:  22,
-			Protocol:      "tcp",
+			Protocol:      securityGroupRuleProtocolTCP,
 			RemoteGroupID: secBastionGroupID,
 		},
 	}
 }
 
 // Permit traffic for ssh worker.
-func GetSGWorkerSSH(secBastionGroupID string) []infrav1.SecurityGroupRule {
-	return []infrav1.SecurityGroupRule{
+func getSGWorkerSSH(secBastionGroupID string) []resolvedSecurityGroupRuleSpec {
+	return []resolvedSecurityGroupRuleSpec{
 		{
-			Description:   "SSH",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
+			Description:   securityGroupRuleDescriptionSSH,
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
 			PortRangeMin:  22,
 			PortRangeMax:  22,
-			Protocol:      "tcp",
+			Protocol:      securityGroupRuleProtocolTCP,
 			RemoteGroupID: secBastionGroupID,
 		},
 	}
 }
 
 // Allow all traffic, including from outside the cluster, to access the API.
-func GetSGControlPlaneHTTPS() []infrav1.SecurityGroupRule {
-	return []infrav1.SecurityGroupRule{
+func getSGControlPlaneHTTPS() []resolvedSecurityGroupRuleSpec {
+	return []resolvedSecurityGroupRuleSpec{
 		{
 			Description:  "Kubernetes API",
-			Direction:    "ingress",
-			EtherType:    "IPv4",
+			Direction:    securityGroupRuleDirectionIngress,
+			EtherType:    securityGroupRuleEtherTypeIPv4,
 			PortRangeMin: 6443,
 			PortRangeMax: 6443,
-			Protocol:     "tcp",
+			Protocol:     securityGroupRuleProtocolTCP,
 		},
 	}
 }
 
 // Allow all traffic, including from outside the cluster, to access node port services.
-func GetSGWorkerNodePort() []infrav1.SecurityGroupRule {
-	return []infrav1.SecurityGroupRule{
+func getSGWorkerNodePort(secWorkerGroupID string, secControlPlaneGroupID string) []resolvedSecurityGroupRuleSpec {
+	return []resolvedSecurityGroupRuleSpec{
 		{
-			Description:  "Node Port Services",
-			Direction:    "ingress",
-			EtherType:    "IPv4",
-			PortRangeMin: 30000,
-			PortRangeMax: 32767,
-			Protocol:     "tcp",
+			Description:   securityGroupRuleDescriptionNodePortServices,
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
+			PortRangeMin:  30000,
+			PortRangeMax:  32767,
+			Protocol:      securityGroupRuleProtocolTCP,
+			RemoteGroupID: secWorkerGroupID,
 		},
 		{
-			Description:  "Node Port Services",
-			Direction:    "ingress",
-			EtherType:    "IPv4",
-			PortRangeMin: 30000,
-			PortRangeMax: 32767,
-			Protocol:     "udp",
+			Description:   securityGroupRuleDescriptionNodePortServices,
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
+			PortRangeMin:  30000,
+			PortRangeMax:  32767,
+			Protocol:      securityGroupRuleProtocolUDP,
+			RemoteGroupID: secWorkerGroupID,
+		},
+		{
+			Description:   securityGroupRuleDescriptionNodePortServices,
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
+			PortRangeMin:  30000,
+			PortRangeMax:  32767,
+			Protocol:      securityGroupRuleProtocolTCP,
+			RemoteGroupID: secControlPlaneGroupID,
+		},
+		{
+			Description:   securityGroupRuleDescriptionNodePortServices,
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
+			PortRangeMin:  30000,
+			PortRangeMax:  32767,
+			Protocol:      securityGroupRuleProtocolUDP,
+			RemoteGroupID: secControlPlaneGroupID,
+		},
+	}
+}
+
+// Allow all traffic from a specific CIDR to access node port services.
+func getSGWorkerNodePortCIDR(cidr string) []resolvedSecurityGroupRuleSpec {
+	return []resolvedSecurityGroupRuleSpec{
+		{
+			Description:    securityGroupRuleDescriptionNodePortServices,
+			Direction:      securityGroupRuleDirectionIngress,
+			EtherType:      securityGroupRuleEtherTypeIPv4,
+			PortRangeMin:   30000,
+			PortRangeMax:   32767,
+			Protocol:       securityGroupRuleProtocolTCP,
+			RemoteIPPrefix: cidr,
+		},
+		{
+			Description:    securityGroupRuleDescriptionNodePortServices,
+			Direction:      securityGroupRuleDirectionIngress,
+			EtherType:      securityGroupRuleEtherTypeIPv4,
+			PortRangeMin:   30000,
+			PortRangeMax:   32767,
+			Protocol:       securityGroupRuleProtocolUDP,
+			RemoteIPPrefix: cidr,
 		},
 	}
 }
 
 // Permit all ingress from the cluster security groups.
-func GetSGControlPlaneAllowAll(remoteGroupIDSelf, secWorkerGroupID string) []infrav1.SecurityGroupRule {
-	return []infrav1.SecurityGroupRule{
+func getSGControlPlaneAllowAll(remoteGroupIDSelf, secWorkerGroupID string) []resolvedSecurityGroupRuleSpec {
+	return []resolvedSecurityGroupRuleSpec{
 		{
-			Description:   "In-cluster Ingress",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
+			Description:   securityGroupRuleDescriptionInClusterIngress,
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
 			PortRangeMin:  0,
 			PortRangeMax:  0,
 			Protocol:      "",
 			RemoteGroupID: remoteGroupIDSelf,
 		},
 		{
-			Description:   "In-cluster Ingress",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
+			Description:   securityGroupRuleDescriptionInClusterIngress,
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
 			PortRangeMin:  0,
 			PortRangeMax:  0,
 			Protocol:      "",
@@ -268,21 +245,21 @@ func GetSGControlPlaneAllowAll(remoteGroupIDSelf, secWorkerGroupID string) []inf
 }
 
 // Permit all ingress from the cluster security groups.
-func GetSGWorkerAllowAll(remoteGroupIDSelf, secControlPlaneGroupID string) []infrav1.SecurityGroupRule {
-	return []infrav1.SecurityGroupRule{
+func getSGWorkerAllowAll(remoteGroupIDSelf, secControlPlaneGroupID string) []resolvedSecurityGroupRuleSpec {
+	return []resolvedSecurityGroupRuleSpec{
 		{
-			Description:   "In-cluster Ingress",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
+			Description:   securityGroupRuleDescriptionInClusterIngress,
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
 			PortRangeMin:  0,
 			PortRangeMax:  0,
 			Protocol:      "",
 			RemoteGroupID: remoteGroupIDSelf,
 		},
 		{
-			Description:   "In-cluster Ingress",
-			Direction:     "ingress",
-			EtherType:     "IPv4",
+			Description:   securityGroupRuleDescriptionInClusterIngress,
+			Direction:     securityGroupRuleDirectionIngress,
+			EtherType:     securityGroupRuleEtherTypeIPv4,
 			PortRangeMin:  0,
 			PortRangeMax:  0,
 			Protocol:      "",
@@ -292,43 +269,26 @@ func GetSGWorkerAllowAll(remoteGroupIDSelf, secControlPlaneGroupID string) []inf
 }
 
 // Permit ports that defined in openStackCluster.Spec.APIServerLoadBalancer.AdditionalPorts.
-func GetSGControlPlaneAdditionalPorts(ports []int) []infrav1.SecurityGroupRule {
-	controlPlaneRules := []infrav1.SecurityGroupRule{}
-
-	r := []infrav1.SecurityGroupRule{
-		{
-			Description: "Additional ports",
-			Direction:   "ingress",
-			EtherType:   "IPv4",
-			Protocol:    "tcp",
-		},
-		{
-			Description: "Additional ports",
-			Direction:   "ingress",
-			EtherType:   "IPv4",
-			Protocol:    "udp",
-		},
+func getSGControlPlaneAdditionalPorts(ports []int32) []resolvedSecurityGroupRuleSpec {
+	// Preallocate r with len(ports)
+	r := make([]resolvedSecurityGroupRuleSpec, len(ports))
+	for i, p := range ports {
+		r[i] = resolvedSecurityGroupRuleSpec{
+			Description:  "Additional port",
+			Direction:    securityGroupRuleDirectionIngress,
+			EtherType:    securityGroupRuleEtherTypeIPv4,
+			Protocol:     securityGroupRuleProtocolTCP,
+			PortRangeMin: int(p),
+			PortRangeMax: int(p),
+		}
 	}
-	for _, p := range ports {
-		r[0].PortRangeMin = p
-		r[0].PortRangeMax = p
-		r[1].PortRangeMin = p
-		r[1].PortRangeMax = p
-		controlPlaneRules = append(controlPlaneRules, r...)
-	}
-	return controlPlaneRules
+	return r
 }
 
-func GetSGControlPlaneGeneral(remoteGroupIDSelf, secWorkerGroupID string) []infrav1.SecurityGroupRule {
-	controlPlaneRules := []infrav1.SecurityGroupRule{}
-	controlPlaneRules = append(controlPlaneRules, getSGControlPlaneCommon(remoteGroupIDSelf, secWorkerGroupID)...)
-	controlPlaneRules = append(controlPlaneRules, getSGControlPlaneCalico(remoteGroupIDSelf, secWorkerGroupID)...)
-	return controlPlaneRules
+func getSGControlPlaneGeneral(remoteGroupIDSelf, secWorkerGroupID string) []resolvedSecurityGroupRuleSpec {
+	return getSGControlPlaneCommon(remoteGroupIDSelf, secWorkerGroupID)
 }
 
-func GetSGWorkerGeneral(remoteGroupIDSelf, secControlPlaneGroupID string) []infrav1.SecurityGroupRule {
-	workerRules := []infrav1.SecurityGroupRule{}
-	workerRules = append(workerRules, getSGWorkerCommon(remoteGroupIDSelf, secControlPlaneGroupID)...)
-	workerRules = append(workerRules, getSGWorkerCalico(remoteGroupIDSelf, secControlPlaneGroupID)...)
-	return workerRules
+func getSGWorkerGeneral(remoteGroupIDSelf, secControlPlaneGroupID string) []resolvedSecurityGroupRuleSpec {
+	return getSGWorkerCommon(remoteGroupIDSelf, secControlPlaneGroupID)
 }

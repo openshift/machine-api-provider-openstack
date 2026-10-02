@@ -21,11 +21,11 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/golang/mock/gomock"
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/tokens"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/tokens"
+	"go.uber.org/mock/gomock"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
+	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta2"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/clients"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/clients/mock"
 )
@@ -39,12 +39,11 @@ type MockScopeFactory struct {
 	ImageClient   *mock.MockImageClient
 	LbClient      *mock.MockLbClient
 
-	logger                 logr.Logger
 	projectID              string
 	clientScopeCreateError error
 }
 
-func NewMockScopeFactory(mockCtrl *gomock.Controller, projectID string, logger logr.Logger) *MockScopeFactory {
+func NewMockScopeFactory(mockCtrl *gomock.Controller, projectID string) *MockScopeFactory {
 	computeClient := mock.NewMockComputeClient(mockCtrl)
 	volumeClient := mock.NewMockVolumeClient(mockCtrl)
 	imageClient := mock.NewMockImageClient(mockCtrl)
@@ -58,7 +57,6 @@ func NewMockScopeFactory(mockCtrl *gomock.Controller, projectID string, logger l
 		NetworkClient: networkClient,
 		LbClient:      lbClient,
 		projectID:     projectID,
-		logger:        logger,
 	}
 }
 
@@ -66,14 +64,7 @@ func (f *MockScopeFactory) SetClientScopeCreateError(err error) {
 	f.clientScopeCreateError = err
 }
 
-func (f *MockScopeFactory) NewClientScopeFromMachine(_ context.Context, _ client.Client, _ *infrav1.OpenStackMachine, _ *infrav1.OpenStackCluster, _ []byte, _ logr.Logger) (Scope, error) {
-	if f.clientScopeCreateError != nil {
-		return nil, f.clientScopeCreateError
-	}
-	return f, nil
-}
-
-func (f *MockScopeFactory) NewClientScopeFromCluster(_ context.Context, _ client.Client, _ *infrav1.OpenStackCluster, _ []byte, _ logr.Logger) (Scope, error) {
+func (f *MockScopeFactory) NewClientScopeFromObject(_ context.Context, _ client.Client, _ []byte, _ logr.Logger, _ ...infrav1.IdentityRefProvider) (Scope, error) {
 	if f.clientScopeCreateError != nil {
 		return nil, f.clientScopeCreateError
 	}
@@ -98,10 +89,6 @@ func (f *MockScopeFactory) NewNetworkClient() (clients.NetworkClient, error) {
 
 func (f *MockScopeFactory) NewLbClient() (clients.LbClient, error) {
 	return f.LbClient, nil
-}
-
-func (f *MockScopeFactory) Logger() logr.Logger {
-	return f.logger
 }
 
 func (f *MockScopeFactory) ProjectID() string {
