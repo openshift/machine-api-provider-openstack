@@ -1,19 +1,20 @@
 package flavorcache
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/flavors"
 )
 
 const StaledTime time.Duration = 300 * time.Second
 const RefreshFailureTime time.Duration = 60 * time.Second // This controls how often we try to get a look at a failed flavor
 
 type openStackInstanceService interface {
-	GetFlavorID(flavorName string) (string, error)
-	GetFlavorInfo(flavorID string) (flavor *flavors.Flavor, err error)
+	GetFlavorID(ctx context.Context, flavorName string) (string, error)
+	GetFlavorInfo(ctx context.Context, flavorID string) (flavor *flavors.Flavor, err error)
 }
 
 type flavorEntry struct {
@@ -51,8 +52,8 @@ func (fc *Cache) needsRefresh(flavorName string, now time.Time) bool {
 }
 
 // refresh is unexported and assumes a write lock has been acquired
-func (fc *Cache) refresh(osService openStackInstanceService, flavorName string) {
-	flavorID, err := osService.GetFlavorID(flavorName)
+func (fc *Cache) refresh(ctx context.Context, osService openStackInstanceService, flavorName string) {
+	flavorID, err := osService.GetFlavorID(ctx, flavorName)
 	if err != nil {
 		fc.cache[flavorName] = flavorEntry{
 			updated: time.Now(),
@@ -61,7 +62,7 @@ func (fc *Cache) refresh(osService openStackInstanceService, flavorName string) 
 		return
 	}
 
-	flavorInfo, err := osService.GetFlavorInfo(flavorID)
+	flavorInfo, err := osService.GetFlavorInfo(ctx, flavorID)
 	if err != nil {
 		fc.cache[flavorName] = flavorEntry{
 			flavorInfo: flavorInfo,
@@ -86,12 +87,12 @@ func New() *Cache {
 // Get returns flavor information, or an error, as retrieved less than
 // ${cache-ttl} ago. The cache TTL is different for successful and unsuccessful
 // results; see StaledTime and RefreshFailureTime above.
-func (fc *Cache) Get(osService openStackInstanceService, flavorName string) (*flavors.Flavor, error) {
+func (fc *Cache) Get(ctx context.Context, osService openStackInstanceService, flavorName string) (*flavors.Flavor, error) {
 	fc.cacheMutex.Lock()
 	defer fc.cacheMutex.Unlock()
 
 	if fc.needsRefresh(flavorName, time.Now()) {
-		fc.refresh(osService, flavorName)
+		fc.refresh(ctx, osService, flavorName)
 	}
 
 	flavorEntry := fc.cache[flavorName]

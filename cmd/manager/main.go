@@ -101,9 +101,19 @@ func main() {
 		"Show current version",
 	)
 
-	// Sets up feature gates
+	// Following pattern of other providers
+	// Ref:
+	// https://github.com/openshift/machine-api-provider-aws/commit/55c75b57546abaca039da54ab00461c5513378fb
+	//
+	// Sets up feature gates (version from build time, default 4 for unknown)
+	// Default should be changed to 5 once we branch for 5
+	majorVersion := version.Version.Major
+	if majorVersion == 0 {
+		majorVersion = 4
+	}
+
 	defaultMutableGate := feature.DefaultMutableFeatureGate
-	gateOpts, err := features.NewFeatureGateOptions(defaultMutableGate, apifeatures.SelfManaged, apifeatures.FeatureGateMachineAPIMigration)
+	gateOpts, err := features.NewFeatureGateOptions(defaultMutableGate, majorVersion, apifeatures.SelfManaged, apifeatures.FeatureGateMachineAPIMigration)
 	if err != nil {
 		klog.Fatalf("Error setting up feature gates: %v", err)
 	}
@@ -229,7 +239,7 @@ func getActuatorParams(mgr manager.Manager) machine.ActuatorParams {
 		KubeClient:    kubeClient,
 		ConfigClient:  configClient,
 		Scheme:        mgr.GetScheme(),
-		EventRecorder: mgr.GetEventRecorderFor("openstack_controller"),
+		EventRecorder: mgr.GetEventRecorder("openstack_controller"),
 	}
 
 }

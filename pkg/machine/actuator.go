@@ -18,18 +18,21 @@ package machine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 
-	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
+	"sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha1"
+	capov1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta2"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/networking"
 	capoRecorder "sigs.k8s.io/cluster-api-provider-openstack/pkg/record"
-	"sigs.k8s.io/cluster-api-provider-openstack/pkg/scope"
+	caposcope "sigs.k8s.io/cluster-api-provider-openstack/pkg/scope"
 
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 	"github.com/openshift/machine-api-provider-openstack/pkg/utils"
@@ -47,12 +50,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const OpenstackServerResourcesAnnotationKey = "openstack-server-resources"
+
 // ActuatorParams holds parameter information for Actuator
 type ActuatorParams struct {
 	KubeClient    kubernetes.Interface
 	Client        client.Client
 	ConfigClient  configclient.ConfigV1Interface
-	EventRecorder record.EventRecorder
+	EventRecorder events.EventRecorder
 	Scheme        *runtime.Scheme
 }
 
@@ -65,7 +70,7 @@ type OpenstackClient struct {
 	params        ActuatorParams
 	scheme        *runtime.Scheme
 	client        client.Client
-	eventRecorder record.EventRecorder
+	eventRecorder events.EventRecorder
 }
 
 func NewActuator(params ActuatorParams) (*OpenstackClient, error) {
@@ -79,7 +84,7 @@ func NewActuator(params ActuatorParams) (*OpenstackClient, error) {
 	}, nil
 }
 
-func (oc *OpenstackClient) getScope(ctx context.Context, machine *machinev1.Machine) (scope.Scope, string, error) {
+func (oc *OpenstackClient) getScope(ctx context.Context, machine *machinev1.Machine) (*caposcope.WithLogger, string, error) {
 	log := ctrl.LoggerFrom(ctx)
 	log = log.WithValues("machine", machine.Name)
 	cloud, cacert, err := clients.GetCloud(oc.params.KubeClient, machine)
@@ -87,7 +92,12 @@ func (oc *OpenstackClient) getScope(ctx context.Context, machine *machinev1.Mach
 		return nil, "", err
 	}
 	regionName := cloud.RegionName
-	scope, err := scope.NewProviderScope(cloud, cacert, log)
+	ps, err := caposcope.NewProviderScope(cloud, regionName, cacert, log)
+	if err != nil {
+		return nil, "", fmt.Errorf("create provider scope: %w", err)
+	}
+	scope := caposcope.NewWithLogger(ps, log)
+
 	return scope, regionName, err
 }
 
@@ -105,7 +115,7 @@ func (oc *OpenstackClient) setProviderID(ctx context.Context, machine *machinev1
 	return oc.client.Patch(ctx, machine, patch)
 }
 
-func getInstanceStatus(scope scope.Scope, machine *machinev1.Machine) (*compute.InstanceStatus, error) {
+func getInstanceStatus(scope *caposcope.WithLogger, machine *machinev1.Machine) (*compute.InstanceStatus, error) {
 	computeService, err := compute.NewService(scope)
 	if err != nil {
 		return nil, err
@@ -124,18 +134,8 @@ func getInstanceStatus(scope scope.Scope, machine *machinev1.Machine) (*compute.
 	return computeService.GetInstanceStatus(instanceID)
 }
 
-func (oc *OpenstackClient) convertMachineToCapoInstanceSpec(scope scope.Scope, machine *machinev1.Machine) (*compute.InstanceSpec, error) {
-	machineSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate MachineSpec object: %v", err)
-	}
-
-	clusterInfra, err := oc.params.ConfigClient.Infrastructures().Get(context.TODO(), "cluster", metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve cluster Infrastructure object: %v", err)
-	}
-
-	instanceService, err := clients.NewInstanceServiceFromMachine(oc.params.KubeClient, machine)
+func (oc *OpenstackClient) convertMachineToCapoInstanceSpec(ctx context.Context, machine *machinev1.Machine, machineSpec *machinev1alpha1.OpenstackProviderSpec, clusterInfra *configv1.Infrastructure) (*compute.InstanceSpec, error) {
+	instanceService, err := clients.NewInstanceServiceFromMachine(ctx, oc.params.KubeClient, machine)
 	if err != nil {
 		return nil, err
 	}
@@ -145,20 +145,14 @@ func (oc *OpenstackClient) convertMachineToCapoInstanceSpec(scope scope.Scope, m
 		return nil, fmt.Errorf("error getting bootstrap for %s: %v", machine.Name, err)
 	}
 
-	var ignoreAddressPairs bool = false
-	if clusterInfra.Status.PlatformStatus.OpenStack.LoadBalancer != nil && clusterInfra.Status.PlatformStatus.OpenStack.LoadBalancer.Type == configv1.LoadBalancerTypeUserManaged {
-		// If the load balancer type is managed by the user, we don't want to create address pairs because the
-		// API & Ingress VIPs are not managed by the cluster.
-		ignoreAddressPairs = true
-	}
-
 	// Convert to CAPO InstanceSpec
 	instanceSpec, err := MachineToInstanceSpec(
+		ctx,
 		machine,
 		clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIPs,
 		clusterInfra.Status.PlatformStatus.OpenStack.IngressIPs,
 		userDataRendered, instanceService,
-		ignoreAddressPairs,
+		shouldIgnoreAddressPairs(clusterInfra),
 	)
 	if err != nil {
 		return nil, err
@@ -187,10 +181,28 @@ func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Mac
 	if err != nil {
 		return err
 	}
+	log := scope.Logger()
 
 	instanceStatus, err := getInstanceStatus(scope, machine)
 	if err != nil {
 		return err
+	}
+
+	// Adopt ports that we created but failed to update the annoation for.
+	// This will also update the annotation during upgrade from previous version.
+	adopted, err := oc.adoptPortsForMachine(ctx, scope, machine)
+	if err != nil {
+		return fmt.Errorf("adopt ports for machine: %w", err)
+	}
+
+	if adopted != nil {
+		patch := client.MergeFrom(machine)
+		if err := oc.client.Patch(ctx, adopted, patch); err != nil {
+			return fmt.Errorf("update machine annotation for server resources: %w", err)
+		}
+		machine = adopted
+
+		log.Info("adopted ports for machine")
 	}
 
 	// MAO shouldn't have called reconcile if the ProviderID is already set.
@@ -198,8 +210,9 @@ func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Mac
 	// recreate a deleted machine. If this did happen we would fall through
 	// below and MAO will mark the machine failed on the next reconcile when
 	// Exists() returns false.
+	var serverResources *v1alpha1.ServerResources
 	if instanceStatus == nil && machine.Spec.ProviderID == nil {
-		instanceStatus, err = oc.createInstance(ctx, machine, scope)
+		instanceStatus, serverResources, err = oc.createInstance(ctx, machine, scope)
 		if err != nil {
 			return err
 		}
@@ -222,6 +235,10 @@ func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Mac
 	patch := client.MergeFrom(machine.DeepCopy())
 	setMachineLabels(machine, regionName, instanceStatus.AvailabilityZone(), machineSpec.Flavor)
 	setMachineAnnotations(machine, instanceStatus)
+	if err := setServerResourcesInAnnotation(machine, serverResources); err != nil {
+		return fmt.Errorf("set server resource annotation for machine: %w", err)
+	}
+
 	if err := oc.client.Patch(ctx, machine, patch); err != nil {
 		return err
 	}
@@ -237,37 +254,75 @@ func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Mac
 
 	// Only record the Updated event if the machine was actually modified
 	if machine.ResourceVersion != originalResourceVersion {
-		oc.eventRecorder.Eventf(machine, corev1.EventTypeNormal, "Updated", "Updated machine %v", machine.Name)
+		utils.Eventf(oc.eventRecorder, machine, corev1.EventTypeNormal, "Updated", "Updated machine %v", machine.Name)
 	}
 	return nil
 }
 
-func (oc *OpenstackClient) createInstance(ctx context.Context, machine *machinev1.Machine, scope scope.Scope) (*compute.InstanceStatus, error) {
-	if err := oc.validateMachine(machine); err != nil {
-		return nil, maoMachine.InvalidMachineConfiguration("Machine validation failed: %v", err)
+func (oc *OpenstackClient) createInstance(ctx context.Context, machine *machinev1.Machine, scope *caposcope.WithLogger) (*compute.InstanceStatus, *v1alpha1.ServerResources, error) {
+	if err := oc.validateMachine(ctx, machine); err != nil {
+		return nil, nil, maoMachine.InvalidMachineConfiguration("Machine validation failed: %v", err)
 	}
 
-	instanceSpec, err := oc.convertMachineToCapoInstanceSpec(scope, machine)
+	clusterInfra, err := oc.params.ConfigClient.Infrastructures().Get(ctx, "cluster", metav1.GetOptions{})
 	if err != nil {
-		return nil, err
+		return nil, nil, fmt.Errorf("failed to retrieve cluster Infrastructure object: %v", err)
+	}
+
+	machineSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate MachineSpec object: %v", err)
+	}
+
+	instanceSpec, err := oc.convertMachineToCapoInstanceSpec(ctx, machine, machineSpec, clusterInfra)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	computeService, err := compute.NewService(scope)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	var osCluster capov1.OpenStackCluster
-	clusterNameWithNamespace := utils.GetClusterNameWithNamespace(machine)
-	instanceStatus, err := computeService.CreateInstance(machine, &osCluster, instanceSpec, clusterNameWithNamespace)
+	networkService, err := networking.NewService(scope)
 	if err != nil {
-		return nil, maoMachine.CreateMachine("error creating Openstack instance: %v", err)
+		return nil, nil, err
 	}
-	oc.eventRecorder.Eventf(machine, corev1.EventTypeNormal, "Created", "Created OpenStack instance %s", instanceStatus.ID())
-	return instanceStatus, nil
+
+	desiredPorts, err := createCAPOResolvedPortSpecs(
+		machineSpec,
+		clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIPs,
+		clusterInfra.Status.PlatformStatus.OpenStack.IngressIPs,
+		shouldIgnoreAddressPairs(clusterInfra),
+		machine, networkService,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resources, err := extractServerResourcesFromAnnotation(machine)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := networkService.EnsurePorts(machine, desiredPorts, resources); err != nil {
+		return nil, nil, err
+	}
+
+	portIDs := make([]string, 0, len(resources.Ports))
+	for _, p := range resources.Ports {
+		portIDs = append(portIDs, p.ID)
+	}
+
+	instanceStatus, err := computeService.CreateInstance(machine, instanceSpec, portIDs)
+	if err != nil {
+		return nil, nil, maoMachine.CreateMachine("error creating Openstack instance: %v", err)
+	}
+	utils.Eventf(oc.eventRecorder, machine, corev1.EventTypeNormal, "Created", "Created OpenStack instance %s", instanceStatus.ID())
+	return instanceStatus, resources, nil
 }
 
-func reconcileFloatingIP(machine *machinev1.Machine, machineSpec *machinev1alpha1.OpenstackProviderSpec, instanceStatus *compute.InstanceStatus, scope scope.Scope) error {
+func reconcileFloatingIP(machine *machinev1.Machine, machineSpec *machinev1alpha1.OpenstackProviderSpec, instanceStatus *compute.InstanceStatus, scope *caposcope.WithLogger) error {
 	if machineSpec.FloatingIP == "" {
 		return nil
 	}
@@ -289,7 +344,7 @@ func reconcileFloatingIP(machine *machinev1.Machine, machineSpec *machinev1alpha
 		return err
 	}
 	var osCluster capov1.OpenStackCluster
-	fp, err := networkService.GetOrCreateFloatingIP(machine, &osCluster, utils.GetClusterNameWithNamespace(machine), machineSpec.FloatingIP)
+	fp, err := networkService.GetOrCreateFloatingIP(machine, &osCluster, utils.GetClusterNameWithNamespace(machine), &machineSpec.FloatingIP)
 	if err != nil {
 		return fmt.Errorf("get floatingIP err: %v", err)
 	}
@@ -316,6 +371,7 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 	if err != nil {
 		return err
 	}
+	log := osc.Logger()
 
 	instanceStatus, err := getInstanceStatus(osc, machine)
 	if err != nil {
@@ -327,26 +383,54 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 		return err
 	}
 
-	machineSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
-	if err != nil {
-		return err
-	}
-	// Create a minimal instancespec since we don't want to reparse and reconstruct all the networking info just to delete
-	instanceSpec := compute.InstanceSpec{
-		Name: machine.Name,
-		// Ports are required when deleting a server in the ERROR state: OCPBUGS-33806
-		// We only need a list of port names, so apiVIPs and ingressVIPs are unnecessary
-		Ports:      createCAPOPorts(machineSpec, nil, nil, true),
-		RootVolume: extractRootVolumeFromProviderSpec(machineSpec),
-	}
-
-	var osCluster capov1.OpenStackCluster
-	err = computeService.DeleteInstance(&osCluster, machine, instanceStatus, &instanceSpec)
+	networkService, err := networking.NewService(osc)
 	if err != nil {
 		return err
 	}
 
-	oc.eventRecorder.Eventf(machine, corev1.EventTypeNormal, "Deleted", "Deleted machine %v", machine.Name)
+	// Try to adopt ports before deletion for:
+	// * Ports have been created but not updated in the annotation
+	// * Upgrade from versions with older CAPO versions
+	adopted, err := oc.adoptPortsForMachine(ctx, osc, machine)
+	if err != nil {
+		return fmt.Errorf("error when adopting ports for machine: %w", err)
+	}
+
+	if adopted != nil {
+		patch := client.MergeFrom(machine)
+		if err := oc.client.Patch(ctx, adopted, patch); err != nil {
+			return err
+		}
+		machine = adopted
+
+		log.Info("adopted ports for machine during deletion")
+	}
+
+	err = computeService.DeleteInstance(machine, instanceStatus)
+	if err != nil {
+		return err
+	}
+	log.Info("instance deleted")
+
+	resources, err := extractServerResourcesFromAnnotation(machine)
+	if err != nil {
+		return err
+	}
+
+	trunkSupported, err := networkService.IsTrunkExtSupported()
+	if err != nil {
+		return err
+	}
+
+	for _, p := range resources.Ports {
+		if err := networkService.DeleteInstanceTrunkAndPort(machine, p, trunkSupported); err != nil {
+			return fmt.Errorf("failed to delete port %q: %w", p.ID, err)
+		}
+		log.Info("port deleted", "portID", p.ID)
+	}
+
+	utils.Eventf(oc.eventRecorder, machine, corev1.EventTypeNormal, "Deleted", "Deleted machine %v", machine.Name)
+
 	return nil
 }
 
@@ -424,13 +508,13 @@ func (oc *OpenstackClient) Exists(ctx context.Context, machine *machinev1.Machin
 	return instanceStatus != nil, nil
 }
 
-func (oc *OpenstackClient) validateMachine(machine *machinev1.Machine) error {
+func (oc *OpenstackClient) validateMachine(ctx context.Context, machine *machinev1.Machine) error {
 	machineSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
 	if err != nil {
 		return fmt.Errorf("\nError getting the machine spec from the provider spec: %v", err)
 	}
 
-	machineService, err := clients.NewInstanceServiceFromMachine(oc.params.KubeClient, machine)
+	machineService, err := clients.NewInstanceServiceFromMachine(ctx, oc.params.KubeClient, machine)
 	if err != nil {
 		return fmt.Errorf("\nError getting a new instance service from the machine: %v", err)
 	}
@@ -439,27 +523,27 @@ func (oc *OpenstackClient) validateMachine(machine *machinev1.Machine) error {
 
 	// Validate that image exists when not booting from volume
 	if machineSpec.RootVolume == nil {
-		err = machineService.DoesImageExist(machineSpec.Image)
+		err = machineService.DoesImageExist(ctx, machineSpec.Image)
 		if err != nil {
 			return err
 		}
 	}
 
 	// Validate that flavor exists
-	err = machineService.DoesFlavorExist(machineSpec.Flavor)
+	err = machineService.DoesFlavorExist(ctx, machineSpec.Flavor)
 	if err != nil {
 		return err
 	}
 
 	// Validate that Availability Zone exists
-	err = machineService.DoesAvailabilityZoneExist(machineSpec.AvailabilityZone)
+	err = machineService.DoesAvailabilityZoneExist(ctx, machineSpec.AvailabilityZone)
 	if err != nil {
 		return err
 	}
 
 	// Check that server group exists or values aren't inconsistent
 	if machineSpec.ServerGroupID != "" && machineSpec.ServerGroupName != "" {
-		serverGroup, err := machineService.GetServerGroupByID(machineSpec.ServerGroupID)
+		serverGroup, err := machineService.GetServerGroupByID(ctx, machineSpec.ServerGroupID)
 		if err != nil {
 			return fmt.Errorf("\nError when looking up server group with ID %s: %v", machineSpec.ServerGroupID, err)
 		}
@@ -467,12 +551,12 @@ func (oc *OpenstackClient) validateMachine(machine *machinev1.Machine) error {
 			return fmt.Errorf("\nName of a %s server group does not match defined name %s", machineSpec.ServerGroupID, machineSpec.ServerGroupName)
 		}
 	} else if machineSpec.ServerGroupID != "" {
-		_, err := machineService.GetServerGroupByID(machineSpec.ServerGroupID)
+		_, err := machineService.GetServerGroupByID(ctx, machineSpec.ServerGroupID)
 		if err != nil {
 			return fmt.Errorf("\nError when looking up server group with ID %s: %v", machineSpec.ServerGroupID, err)
 		}
 	} else if machineSpec.ServerGroupName != "" {
-		serverGroups, err := machineService.GetServerGroupsByName(machineSpec.ServerGroupName)
+		serverGroups, err := machineService.GetServerGroupsByName(ctx, machineSpec.ServerGroupName)
 		if err != nil {
 			return err
 		}
@@ -482,4 +566,87 @@ func (oc *OpenstackClient) validateMachine(machine *machinev1.Machine) error {
 	}
 
 	return nil
+}
+
+func extractServerResourcesFromAnnotation(machine *machinev1.Machine) (*v1alpha1.ServerResources, error) {
+	resources := &v1alpha1.ServerResources{}
+	res, ok := machine.Annotations[OpenstackServerResourcesAnnotationKey]
+	if ok {
+		if err := json.Unmarshal([]byte(res), resources); err != nil {
+			return nil, fmt.Errorf("unmarshal server resources from machine annotation %q: %w", res, err)
+		}
+	}
+
+	return resources, nil
+}
+
+func setServerResourcesInAnnotation(machine *machinev1.Machine, resources *v1alpha1.ServerResources) error {
+	if resources != nil {
+		res, err := json.Marshal(resources)
+		if err != nil {
+			return fmt.Errorf("marshal server resources: %w", err)
+		}
+		if machine.Annotations == nil {
+			machine.Annotations = map[string]string{}
+		}
+		machine.Annotations[OpenstackServerResourcesAnnotationKey] = string(res)
+	}
+
+	return nil
+}
+
+func (oc *OpenstackClient) adoptPortsForMachine(ctx context.Context, scope *caposcope.WithLogger, machine *machinev1.Machine) (*machinev1.Machine, error) {
+	log := scope.Logger()
+
+	log.V(4).Info("start to adopt ports for machine")
+
+	networkService, err := networking.NewService(scope)
+	if err != nil {
+		return nil, err
+	}
+
+	machineSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate MachineSpec object: %v", err)
+	}
+
+	clusterInfra, err := oc.params.ConfigClient.Infrastructures().Get(ctx, "cluster", metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve cluster Infrastructure object: %v", err)
+	}
+
+	desiredPorts, err := createCAPOResolvedPortSpecs(
+		machineSpec,
+		clusterInfra.Status.PlatformStatus.OpenStack.APIServerInternalIPs,
+		clusterInfra.Status.PlatformStatus.OpenStack.IngressIPs,
+		shouldIgnoreAddressPairs(clusterInfra),
+		machine, networkService,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create capo resolved port specs: %w", err)
+	}
+
+	resources, err := extractServerResourcesFromAnnotation(machine)
+	if err != nil {
+		return nil, err
+	}
+
+	res := resources.DeepCopy()
+
+	if err := networkService.AdoptPortsServer(scope, desiredPorts, res); err != nil {
+		return nil, fmt.Errorf("adopt ports for server: %w", err)
+	}
+
+	log.V(4).Info("openstack server resources", "before", resources, "after", res)
+
+	if !reflect.DeepEqual(res, resources) {
+		modified := machine.DeepCopy()
+		if err := setServerResourcesInAnnotation(modified, res); err != nil {
+			return nil, err
+		}
+
+		return modified, nil
+	}
+
+	return nil, nil
 }
