@@ -383,6 +383,11 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 		return err
 	}
 
+	machineSpec, err := clients.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	if err != nil {
+		return err
+	}
+
 	networkService, err := networking.NewService(osc)
 	if err != nil {
 		return err
@@ -406,8 +411,34 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 		log.Info("adopted ports for machine during deletion")
 	}
 
+	rootVol := extractRootVolumeFromProviderSpec(machineSpec)
+	additionalVols := func() []capov1.AdditionalBlockDevice {
+		if len(machineSpec.AdditionalBlockDevices) == 0 {
+			return nil
+		}
+
+		vols := make([]capov1.AdditionalBlockDevice, 0, len(machineSpec.AdditionalBlockDevices))
+
+		for _, dev := range machineSpec.AdditionalBlockDevices {
+			// Only name is required when deleting the volume.
+			vols = append(vols, capov1.AdditionalBlockDevice{
+				Name: dev.Name,
+			})
+		}
+
+		return vols
+	}()
+
 	// GetInstanceStatus in CAPO returns nil if the instance is not found
-	if instanceStatus != nil {
+	if instanceStatus == nil {
+		// Delete orphaned volumes when no instance was created
+		if rootVol != nil || len(additionalVols) != 0 {
+			if err := computeService.DeleteVolumes(machine.Name, rootVol, additionalVols); err != nil {
+				return fmt.Errorf("delete volumes: %w", err)
+			}
+			log.Info("volumes deleted", "rootVolume", rootVol, "additionalVolumes", additionalVols)
+		}
+	} else {
 		if err = computeService.DeleteInstance(machine, instanceStatus); err != nil {
 			return fmt.Errorf("delete instance: %w", err)
 		}
