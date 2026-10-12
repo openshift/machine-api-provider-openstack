@@ -406,11 +406,13 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 		log.Info("adopted ports for machine during deletion")
 	}
 
-	err = computeService.DeleteInstance(machine, instanceStatus)
-	if err != nil {
-		return err
+	// GetInstanceStatus in CAPO returns nil if the instance is not found
+	if instanceStatus != nil {
+		if err = computeService.DeleteInstance(machine, instanceStatus); err != nil {
+			return fmt.Errorf("delete instance: %w", err)
+		}
+		log.Info("instance deleted")
 	}
-	log.Info("instance deleted")
 
 	resources, err := extractServerResourcesFromAnnotation(machine)
 	if err != nil {
