@@ -1,0 +1,7 @@
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.26-openshift-4.22 AS builder
+WORKDIR /go/src/sigs.k8s.io/cluster-api-provider-openstack
+COPY . .
+RUN make
+
+FROM registry.ci.openshift.org/ocp/4.22:base-rhel9
+COPY --from=builder /go/src/sigs.k8s.io/cluster-api-provider-openstack/machine-controller-manager /
