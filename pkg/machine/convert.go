@@ -461,7 +461,7 @@ func createCAPOResolvedPortSpecs(ps *machinev1alpha1.OpenstackProviderSpec, apiV
 		machine.Name,
 		nil,
 		nil,
-		ps.Tags,
+		append(ps.Tags, extractDefaultTags(machine)...),
 	)
 }
 
