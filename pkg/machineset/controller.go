@@ -8,15 +8,16 @@ import (
 
 	"github.com/openshift/machine-api-provider-openstack/pkg/clients"
 	"github.com/openshift/machine-api-provider-openstack/pkg/machineset/flavorcache"
+	"github.com/openshift/machine-api-provider-openstack/pkg/utils"
 
 	"github.com/go-logr/logr"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/flavors"
 	machinev1 "github.com/openshift/api/machine/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrlRuntime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -31,14 +32,14 @@ const (
 )
 
 type OpenStackInstanceService interface {
-	GetFlavorID(flavorName string) (string, error)
-	GetFlavorInfo(flavorID string) (flavor *flavors.Flavor, err error)
+	GetFlavorID(ctx context.Context, flavorName string) (string, error)
+	GetFlavorInfo(ctx context.Context, flavorID string) (flavor *flavors.Flavor, err error)
 }
 
 type Reconciler struct {
 	Client        client.Client
 	Log           logr.Logger
-	eventRecorder record.EventRecorder
+	eventRecorder events.EventRecorder
 	scheme        *runtime.Scheme
 	kubeClient    *kubernetes.Clientset
 	flavorCache   *flavorcache.Cache
@@ -70,7 +71,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrlRuntime.Request) (ct
 	result, err := r.reconcile(ctx, machineSet)
 	if err != nil {
 		logger.Error(err, "Failed to reconcile MachineSet %q", machineSet.Name)
-		r.eventRecorder.Eventf(machineSet, corev1.EventTypeWarning, "ReconcileError", "%v", err)
+		utils.Eventf(r.eventRecorder, machineSet, corev1.EventTypeWarning, "ReconcileError", "%v", err)
 	}
 
 	if err := r.Client.Patch(ctx, machineSet, originalMachineSetPatch); err != nil {
@@ -102,14 +103,14 @@ func (r *Reconciler) reconcile(ctx context.Context, machineSet *machinev1.Machin
 		instanceService = injected
 	} else {
 		m := &machinev1.Machine{Spec: machineSet.Spec.Template.Spec}
-		is, err := clients.NewInstanceServiceFromMachine(r.kubeClient, m)
+		is, err := clients.NewInstanceServiceFromMachine(ctx, r.kubeClient, m)
 		if err != nil {
 			return ctrlRuntime.Result{}, fmt.Errorf("failed to get InstanceService: %v", err)
 		}
 		instanceService = is
 	}
 
-	flavorInfo, err := r.flavorCache.Get(instanceService, pSpec.Flavor)
+	flavorInfo, err := r.flavorCache.Get(ctx, instanceService, pSpec.Flavor)
 	if err != nil {
 		// At this time we don't have enough information to set correct annotations
 		// so we inform the controller it needs to requeue the request.
@@ -141,7 +142,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrlRuntime.Manager, options controlle
 	r.Client = mgr.GetClient()
 	r.scheme = mgr.GetScheme()
 	r.Log = mgr.GetLogger()
-	r.eventRecorder = mgr.GetEventRecorderFor("machineset-controller")
+	r.eventRecorder = mgr.GetEventRecorder("machineset-controller")
 	r.scheme = mgr.GetScheme()
 	config := mgr.GetConfig()
 	r.kubeClient, err = kubernetes.NewForConfig(config)

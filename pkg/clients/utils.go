@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack"
-	"github.com/gophercloud/utils/openstack/clientconfig"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack"
+	"github.com/gophercloud/utils/v2/openstack/clientconfig"
 	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1 "github.com/openshift/api/machine/v1beta1"
 	"github.com/openshift/machine-api-provider-openstack/version"
@@ -45,7 +45,7 @@ func GetCloud(kubeClient kubernetes.Interface, machine *machinev1.Machine) (clie
 }
 
 // GetProviderClient returns an authenticated provider client based on values in the cloud structure
-func GetProviderClient(cloud clientconfig.Cloud, cert []byte) (*gophercloud.ProviderClient, error) {
+func GetProviderClient(ctx context.Context, cloud clientconfig.Cloud, cert []byte) (*gophercloud.ProviderClient, error) {
 	clientOpts := new(clientconfig.ClientOpts)
 
 	if cloud.AuthInfo != nil {
@@ -92,7 +92,7 @@ func GetProviderClient(cloud clientconfig.Cloud, cert []byte) (*gophercloud.Prov
 		klog.Infof("Cloud provider CA cert not provided, using system trust bundle")
 	}
 
-	err = openstack.Authenticate(provider, *opts)
+	err = openstack.Authenticate(ctx, provider, *opts)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to authenticate provider client: %v", err)
 	}

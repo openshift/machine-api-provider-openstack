@@ -17,18 +17,19 @@ limitations under the License.
 package clients
 
 import (
+	"context"
 	"fmt"
 
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/servergroups"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
-	"github.com/gophercloud/utils/openstack/clientconfig"
-	azutils "github.com/gophercloud/utils/openstack/compute/v2/availabilityzones"
-	flavorutils "github.com/gophercloud/utils/openstack/compute/v2/flavors"
-	imageutils "github.com/gophercloud/utils/openstack/imageservice/v2/images"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/flavors"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/servergroups"
+	"github.com/gophercloud/utils/v2/openstack/clientconfig"
+	azutils "github.com/gophercloud/utils/v2/openstack/compute/v2/availabilityzones"
+	flavorutils "github.com/gophercloud/utils/v2/openstack/compute/v2/flavors"
+	imageutils "github.com/gophercloud/utils/v2/openstack/image/v2/images"
 	machinev1 "github.com/openshift/api/machine/v1beta1"
 )
 
@@ -38,22 +39,22 @@ type InstanceService struct {
 }
 
 // TODO: Eventually we'll have a NewInstanceServiceFromCluster too
-func NewInstanceServiceFromMachine(kubeClient kubernetes.Interface, machine *machinev1.Machine) (*InstanceService, error) {
+func NewInstanceServiceFromMachine(ctx context.Context, kubeClient kubernetes.Interface, machine *machinev1.Machine) (*InstanceService, error) {
 	cloud, cacert, err := GetCloud(kubeClient, machine)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewInstanceServiceFromCloud(cloud, cacert)
+	return NewInstanceServiceFromCloud(ctx, cloud, cacert)
 }
 
-func NewInstanceService() (*InstanceService, error) {
+func NewInstanceService(ctx context.Context) (*InstanceService, error) {
 	cloud := clientconfig.Cloud{}
-	return NewInstanceServiceFromCloud(cloud, nil)
+	return NewInstanceServiceFromCloud(ctx, cloud, nil)
 }
 
-func NewInstanceServiceFromCloud(cloud clientconfig.Cloud, cert []byte) (*InstanceService, error) {
-	provider, err := GetProviderClient(cloud, cert)
+func NewInstanceServiceFromCloud(ctx context.Context, cloud clientconfig.Cloud, cert []byte) (*InstanceService, error) {
+	provider, err := GetProviderClient(ctx, cloud, cert)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +66,7 @@ func NewInstanceServiceFromCloud(cloud clientconfig.Cloud, cert []byte) (*Instan
 		return nil, fmt.Errorf("create serviceClient err: %v", err)
 	}
 
-	imagesClient, err := openstack.NewImageServiceV2(provider, gophercloud.EndpointOpts{
+	imagesClient, err := openstack.NewImageV2(provider, gophercloud.EndpointOpts{
 		Region: cloud.RegionName,
 	})
 	if err != nil {
@@ -79,23 +80,23 @@ func NewInstanceServiceFromCloud(cloud clientconfig.Cloud, cert []byte) (*Instan
 }
 
 // DoesFlavorExist returns nil if exactly one flavor exists with the given name.
-func (is *InstanceService) DoesFlavorExist(flavorName string) error {
-	_, err := flavorutils.IDFromName(is.computeClient, flavorName)
+func (is *InstanceService) DoesFlavorExist(ctx context.Context, flavorName string) error {
+	_, err := flavorutils.IDFromName(ctx, is.computeClient, flavorName)
 	return err
 }
 
 // DoesImageExist returns nil if exactly one image exists with the given name.
-func (is *InstanceService) DoesImageExist(imageName string) error {
-	_, err := imageutils.IDFromName(is.imagesClient, imageName)
+func (is *InstanceService) DoesImageExist(ctx context.Context, imageName string) error {
+	_, err := imageutils.IDFromName(ctx, is.imagesClient, imageName)
 	return err
 }
 
 // DoesAvailabilityZoneExist return an error if AZ with the given name doesn't exist, and nil otherwise
-func (is *InstanceService) DoesAvailabilityZoneExist(azName string) error {
+func (is *InstanceService) DoesAvailabilityZoneExist(ctx context.Context, azName string) error {
 	if azName == "" {
 		return nil
 	}
-	zones, err := azutils.ListAvailableAvailabilityZones(is.computeClient)
+	zones, err := azutils.ListAvailableAvailabilityZones(ctx, is.computeClient)
 	if err != nil {
 		return err
 	}
@@ -110,20 +111,24 @@ func (is *InstanceService) DoesAvailabilityZoneExist(azName string) error {
 	return fmt.Errorf("could not find compute availability zone: %s", azName)
 }
 
-func (is *InstanceService) GetFlavorInfo(flavorID string) (flavor *flavors.Flavor, err error) {
+func (is *InstanceService) GetFlavorInfo(ctx context.Context, flavorID string) (flavor *flavors.Flavor, err error) {
 
-	info, err := flavors.Get(is.computeClient, flavorID).Extract()
+	info, err := flavors.Get(ctx, is.computeClient, flavorID).Extract()
 	if err != nil {
 		return nil, fmt.Errorf("could not find information for flavor id %s", flavorID)
 	}
 	return info, nil
 }
 
-func (is *InstanceService) GetFlavorID(flavorName string) (string, error) {
-	return flavorutils.IDFromName(is.computeClient, flavorName)
+func (is *InstanceService) GetFlavorID(ctx context.Context, flavorName string) (string, error) {
+	return flavorutils.IDFromName(ctx, is.computeClient, flavorName)
 }
 
-func (is *InstanceService) CreateServerGroup(name string) (*servergroups.ServerGroup, error) {
+func (is *InstanceService) GetImageID(ctx context.Context, imageName string) (string, error) {
+	return imageutils.IDFromName(ctx, is.imagesClient, imageName)
+}
+
+func (is *InstanceService) CreateServerGroup(ctx context.Context, name string) (*servergroups.ServerGroup, error) {
 	// Microversion "2.15" is the first that supports "soft"-anti-affinity.
 	// Microversions starting from "2.64" accept policies as a string
 	// instead of an array.
@@ -132,14 +137,14 @@ func (is *InstanceService) CreateServerGroup(name string) (*servergroups.ServerG
 	}(is.computeClient.Microversion)
 	is.computeClient.Microversion = "2.15"
 
-	return servergroups.Create(is.computeClient, &servergroups.CreateOpts{
+	return servergroups.Create(ctx, is.computeClient, &servergroups.CreateOpts{
 		Name:     name,
 		Policies: []string{"soft-anti-affinity"},
 	}).Extract()
 }
 
-func (is *InstanceService) GetServerGroupsByName(name string) ([]servergroups.ServerGroup, error) {
-	pages, err := servergroups.List(is.computeClient, servergroups.ListOpts{}).AllPages()
+func (is *InstanceService) GetServerGroupsByName(ctx context.Context, name string) ([]servergroups.ServerGroup, error) {
+	pages, err := servergroups.List(is.computeClient, servergroups.ListOpts{}).AllPages(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -159,8 +164,8 @@ func (is *InstanceService) GetServerGroupsByName(name string) ([]servergroups.Se
 	return serverGroups, nil
 }
 
-func (is *InstanceService) GetServerGroupByID(id string) (*servergroups.ServerGroup, error) {
-	servergroup, err := servergroups.Get(is.computeClient, id).Extract()
+func (is *InstanceService) GetServerGroupByID(ctx context.Context, id string) (*servergroups.ServerGroup, error) {
+	servergroup, err := servergroups.Get(ctx, is.computeClient, id).Extract()
 	if err != nil {
 		return nil, err
 	}

@@ -22,33 +22,28 @@ import (
 	"sort"
 
 	"github.com/go-logr/logr"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/servers"
 	corev1 "k8s.io/api/core/v1"
 
-	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha7"
-	"sigs.k8s.io/cluster-api-provider-openstack/pkg/clients"
+	infrav1 "sigs.k8s.io/cluster-api-provider-openstack/api/v1beta2"
 )
 
 // InstanceSpec defines the fields which can be set on a new OpenStack instance.
-//
-// InstanceSpec does not contain all of the fields of infrav1.Instance, as not
-// all of them can be set on a new instance.
 type InstanceSpec struct {
-	Name                   string
-	Image                  string
-	ImageUUID              string
-	Flavor                 string
-	SSHKeyName             string
-	UserData               string
-	Metadata               map[string]string
-	ConfigDrive            bool
-	FailureDomain          string
-	RootVolume             *infrav1.RootVolume
-	AdditionalBlockDevices []infrav1.AdditionalBlockDevice
-	ServerGroupID          string
-	Trunk                  bool
-	Tags                   []string
-	SecurityGroups         []infrav1.SecurityGroupFilter
-	Ports                  []infrav1.PortOpts
+	Name                          string
+	ImageID                       string
+	FlavorID                      string
+	SSHKeyName                    string
+	UserData                      string
+	Metadata                      map[string]string
+	ConfigDrive                   bool
+	FailureDomain                 string
+	RootVolume                    *infrav1.RootVolume
+	AdditionalBlockDevices        []infrav1.AdditionalBlockDevice
+	ServerGroupID                 string
+	Trunk                         bool
+	Tags                          []string
+	SchedulerAdditionalProperties []infrav1.SchedulerHintAdditionalProperty
 }
 
 // InstanceIdentifier describes an instance which has not necessarily been fetched.
@@ -59,11 +54,11 @@ type InstanceIdentifier struct {
 
 // InstanceStatus represents instance data which has been returned by OpenStack.
 type InstanceStatus struct {
-	server *clients.ServerExt
+	server *servers.Server
 	logger logr.Logger
 }
 
-func NewInstanceStatusFromServer(server *clients.ServerExt, logger logr.Logger) *InstanceStatus {
+func NewInstanceStatusFromServer(server *servers.Server, logger logr.Logger) *InstanceStatus {
 	return &InstanceStatus{server, logger}
 }
 
@@ -100,25 +95,25 @@ func (is *InstanceStatus) AvailabilityZone() string {
 	return is.server.AvailabilityZone
 }
 
-// BastionStatus returns an infrav1.BastionStatus for use in the cluster status.
-func (is *InstanceStatus) BastionStatus(openStackCluster *infrav1.OpenStackCluster) (*infrav1.BastionStatus, error) {
-	i := infrav1.BastionStatus{
-		ID:         is.ID(),
-		Name:       is.Name(),
-		SSHKeyName: is.SSHKeyName(),
-		State:      is.State(),
+// BastionStatus updates BastionStatus in openStackCluster.
+func (is *InstanceStatus) UpdateBastionStatus(openStackCluster *infrav1.OpenStackCluster) {
+	if openStackCluster.Status.Bastion == nil {
+		openStackCluster.Status.Bastion = &infrav1.BastionStatus{}
 	}
+
+	openStackCluster.Status.Bastion.ID = is.ID()
+	openStackCluster.Status.Bastion.Name = is.Name()
+	openStackCluster.Status.Bastion.SSHKeyName = is.SSHKeyName()
+	openStackCluster.Status.Bastion.State = is.State()
 
 	ns, err := is.NetworkStatus()
 	if err != nil {
-		return nil, err
+		// Bastion IP won't be saved in status, error is not critical
+		return
 	}
 
 	clusterNetwork := openStackCluster.Status.Network.Name
-	i.IP = ns.IP(clusterNetwork)
-	i.FloatingIP = ns.FloatingIP(clusterNetwork)
-
-	return &i, nil
+	openStackCluster.Status.Bastion.IP = ns.IP(clusterNetwork)
 }
 
 // InstanceIdentifier returns an InstanceIdentifier object for an InstanceStatus.
@@ -151,7 +146,8 @@ func (is *InstanceStatus) NetworkStatus() (*InstanceNetworkStatus, error) {
 			return nil, fmt.Errorf("error unmarshalling addresses for instance %s: %w", is.ID(), err)
 		}
 
-		var IPv4addresses, IPv6addresses []corev1.NodeAddress
+		IPv4addresses := make([]corev1.NodeAddress, 0, len(interfaceList))
+		IPv6addresses := make([]corev1.NodeAddress, 0, len(interfaceList))
 		for i := range interfaceList {
 			address := &interfaceList[i]
 
@@ -162,7 +158,7 @@ func (is *InstanceStatus) NetworkStatus() (*InstanceNetworkStatus, error) {
 			case "fixed":
 				addressType = corev1.NodeInternalIP
 			default:
-				is.logger.V(6).Info("Ignoring address with unknown type", "address", address.Address, "type", address.Type)
+				is.logger.V(5).Info("Ignoring address with unknown type", "address", address.Address, "type", address.Type)
 				continue
 			}
 			if address.Version == 4 {
@@ -199,7 +195,12 @@ func (ns *InstanceNetworkStatus) Addresses() []corev1.NodeAddress {
 	}
 	sort.Strings(networks)
 
-	var addresses []corev1.NodeAddress
+	// Calculate total number of addresses to preallocate
+	totalAddresses := 0
+	for _, addrs := range ns.addresses {
+		totalAddresses += len(addrs)
+	}
+	addresses := make([]corev1.NodeAddress, 0, totalAddresses)
 	for _, network := range networks {
 		addressList := ns.addresses[network]
 		addresses = append(addresses, addressList...)

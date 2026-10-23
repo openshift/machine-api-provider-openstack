@@ -22,7 +22,7 @@ import (
 )
 
 func TestMachineServiceInstance(t *testing.T) {
-	_, err := NewInstanceService()
+	_, err := NewInstanceService(t.Context())
 	if !(strings.Contains(err.Error(), "[auth_url]")) {
 		t.Errorf("Couldn't create instance service: %v", err)
 	}

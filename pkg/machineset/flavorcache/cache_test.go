@@ -1,12 +1,13 @@
 package flavorcache
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"testing"
 	"time"
 
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/flavors"
 )
 
 func newFlavorCache(options ...func(*Cache)) *Cache {
@@ -80,14 +81,16 @@ type instanceService struct {
 	wasCalled bool
 }
 
-func (s *instanceService) GetFlavorID(flavorName string) (string, error) {
+var _ openStackInstanceService = &instanceService{}
+
+func (s *instanceService) GetFlavorID(ctx context.Context, flavorName string) (string, error) {
 	s.wasCalled = true
 	if flavorName == s.flavorName {
 		return s.flavorID, s.flavorIDError
 	}
 	return "", fmt.Errorf("flavor name NOT FOUND")
 }
-func (s *instanceService) GetFlavorInfo(flavorID string) (flavor *flavors.Flavor, err error) {
+func (s *instanceService) GetFlavorInfo(ctx context.Context, flavorID string) (flavor *flavors.Flavor, err error) {
 	s.wasCalled = true
 	if flavorID == s.flavorID {
 		return s.flavorInfo, s.flavorInfoError
@@ -222,7 +225,7 @@ func TestGet(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f, err := tc.fc.Get(tc.service, tc.flavorName)
+			f, err := tc.fc.Get(t.Context(), tc.service, tc.flavorName)
 			for _, check := range tc.check {
 				if e := check(f, err, tc.service); e != nil {
 					t.Error(e)
