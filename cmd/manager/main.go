@@ -101,15 +101,13 @@ func main() {
 		"Show current version",
 	)
 
-	// Following pattern of other providers
-	// Ref:
-	// https://github.com/openshift/machine-api-provider-aws/commit/55c75b57546abaca039da54ab00461c5513378fb
-	//
-	// Sets up feature gates (version from build time, default 4 for unknown)
-	// Default should be changed to 5 once we branch for 5
+	// Feature-gate defaults are selected by OpenShift major version.
+	// TODO: Populate version.Raw at build time (see version/version.go).
+	// Until that is wired up, or if the build version cannot be determined,
+	// fall back to the OpenShift major version targeted by this branch.
 	majorVersion := version.Version.Major
 	if majorVersion == 0 {
-		majorVersion = 4
+		majorVersion = 5
 	}
 
 	defaultMutableGate := feature.DefaultMutableFeatureGate
