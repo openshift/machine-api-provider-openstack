@@ -188,7 +188,7 @@ func (oc *OpenstackClient) reconcile(ctx context.Context, machine *machinev1.Mac
 		return err
 	}
 
-	// Adopt ports that we created but failed to update the annoation for.
+	// Adopt ports that we created but failed to update the annotation for.
 	// This will also update the annotation during upgrade from previous version.
 	adopted, err := oc.adoptPortsForMachine(ctx, scope, machine)
 	if err != nil {
